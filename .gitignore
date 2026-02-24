@@ -1,0 +1,14 @@
+node_modules/
+.DS_Store
+.env
+dist/
+build/
+*.log
+.gemini/
+.system_generated/
+requirements.md
+implementation_plan.md
+task.md
+walkthrough.md
+native_app_guide.md
+deploy_guide.md

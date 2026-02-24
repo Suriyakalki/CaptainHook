@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captain Hook</title>
+    <link rel="stylesheet" href="assets/css/style.css?v=20.0">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta name="description" content="Captain Hook: Your go-to destination for movies & TV streaming">
+    <meta name="theme-color" content="#ff3e3e">
+    <link rel="apple-touch-icon" href="assets/img/logo-ch.svg">
+    <link rel="manifest" href="manifest.json">
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</head>
+
+<body>
+    <div class="noise-overlay"></div>
+    <header class="top-bar">
+        <div class="menu-toggle" id="mobile-menu">
+            <i class="fas fa-bars"></i>
+        </div>
+        <div class="logo" id="logo-btn">
+            <span class="logo-text">CAPTAIN_HOOK</span>
+            <span class="logo-icon">CH</span>
+        </div>
+    </header>
+
+    <!-- Added sidebar-collapsed class by default as per requirements -->
+    <nav class="navbar sidebar-collapsed" id="navbar">
+        <ul class="nav-links" id="nav-links">
+            <li><a href="#search" class="nav-link" data-view="search" title="Search"><i class="fas fa-search"></i>
+                    <span>Search</span></a></li>
+            <li><a href="#" class="nav-link active" data-view="home" title="Home"><i class="fas fa-home"></i>
+                    <span>Home</span></a></li>
+            <li><a href="#movies" class="nav-link" data-view="movies" title="Movies"><i class="fas fa-film"></i>
+                    <span>Movies</span></a></li>
+            <li><a href="#tv-shows" class="nav-link" data-view="tv" title="TV Shows"><i class="fas fa-tv"></i> <span>TV
+                        Shows</span></a></li>
+            <li><a href="#genres" class="nav-link" data-view="genres" title="Genres"><i class="fas fa-tags"></i>
+                    <span>Genres</span></a></li>
+            <li><a href="#my-list" class="nav-link" data-view="list" title="My List"><i class="fas fa-list"></i>
+                    <span>My List</span></a></li>
+        </ul>
+        <div class="nav-actions">
+            <div class="user-profile">
+                <button id="theme-toggle" class="btn-theme" title="Toggle Theme">
+                    <i class="fas fa-moon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <!-- Home/Movie/TV/Search/Details content rows will be injected here -->
+        <section id="hero" class="hero"></section>
+
+        <!-- Content Rows will be injected here -->
+        <div id="content-rows"></div>
+    </main>
+
+    <script type="module" src="assets/js/app.js?v=20.0"></script>
+</body>
+
+</html>

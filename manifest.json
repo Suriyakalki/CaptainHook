@@ -1,0 +1,42 @@
+{
+  "name": "Captain Hook",
+  "short_name": "CaptainHook",
+  "description": "Captain Hook: Your go-to destination for movies & TV streaming",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ff3e3e",
+  "scope": "./",
+  "orientation": "portrait",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": [
+    "entertainment",
+    "streaming",
+    "movies"
+  ],
+  "icons": [
+    {
+      "src": "assets/img/logo-ch.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?w=1280&h=720&fit=crop",
+      "sizes": "1280x720",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "Captain Hook Desktop Preview"
+    },
+    {
+      "src": "https://images.unsplash.com/photo-1598899134739-24c46f58b8c0?w=720&h=1280&fit=crop",
+      "sizes": "720x1280",
+      "type": "image/jpeg",
+      "form_factor": "narrow",
+      "label": "Captain Hook Mobile Preview"
+    }
+  ]
+}

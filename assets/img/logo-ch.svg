@@ -1,0 +1,14 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" fill="black"/>
+  
+  <!-- Improved 'C' with glitched red shadow -->
+  <text x="40" y="380" font-family="'Space Grotesk', sans-serif" font-weight="900" font-size="300" fill="#2b59ff">C</text>
+  <text x="30" y="370" font-family="'Space Grotesk', sans-serif" font-weight="900" font-size="300" fill="#ff3e3e">C</text>
+  
+  <!-- Separated and highly visible 'H' on white block -->
+  <rect x="250" y="110" width="220" height="300" fill="white" stroke="black" stroke-width="12"/>
+  <text x="270" y="375" font-family="'Space Grotesk', sans-serif" font-weight="900" font-size="300" fill="black">H</text>
+  
+  <!-- Subtle Scanning scanline detail -->
+  <rect x="0" y="250" width="512" height="6" fill="#2b59ff" opacity="0.4"/>
+</svg>
