@@ -1,14 +1,16 @@
-const CACHE_NAME = 'captain-hook-v2';
+const CACHE_NAME = 'captain-hook-v22';
 const assets = [
     './',
     './index.html',
-    './assets/css/style.css',
-    './assets/js/app.js',
-    './assets/js/tmdbService.js',
-    './assets/js/config.js'
+    './assets/css/style.css?v=22.0',
+    './assets/js/app.js?v=20.0',
+    './assets/js/tmdbService.js?v=20.0',
+    './assets/js/config.js?v=20.0'
 ];
 
 self.addEventListener('install', e => {
+    // Skip waiting so the new SW activates immediately
+    self.skipWaiting();
     e.waitUntil(
         caches.open(CACHE_NAME).then(cache => {
             return cache.addAll(assets);
@@ -16,7 +18,7 @@ self.addEventListener('install', e => {
     );
 });
 
-// Force update by clearing old caches
+// Force update by clearing ALL old caches
 self.addEventListener('activate', e => {
     e.waitUntil(
         caches.keys().then(keys => {
@@ -25,7 +27,7 @@ self.addEventListener('activate', e => {
                     return caches.delete(key);
                 }
             }));
-        })
+        }).then(() => self.clients.claim())
     );
 });
 
