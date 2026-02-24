@@ -1080,13 +1080,22 @@ body.hide-nav .top-bar {
         border-left: none;
     }
 
-    /* Nav actions (theme toggle) */
+    /* Nav actions (theme toggle) — hidden by default, shown inside dropdown */
     .nav-actions {
-        flex-direction: row;
-        gap: 8px;
-        padding: 12px 20px;
-        border-top: 1px solid rgba(128, 128, 128, 0.2);
+        display: none;
+        pointer-events: auto;
+    }
+
+    .nav-links.active~.nav-actions {
         display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 20px;
+        border-top: 1px solid rgba(128, 128, 128, 0.2);
+        background: var(--navbar-bg);
+        width: 100%;
+        border-bottom: var(--border-thick);
     }
 
     .btn-theme {
