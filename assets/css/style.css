@@ -35,7 +35,7 @@
     --text-primary: #000000;
     --text-secondary: #333333;
     --navbar-bg: #ffffff;
-    --hero-content-bg: #ffffff;
+
     --row-bg-even: #f0f0f0;
     --row-bg-odd: #ffffff;
     --shadow-color: var(--black);
@@ -67,7 +67,7 @@
     --text-primary: #ffffff;
     --text-secondary: #cccccc;
     --navbar-bg: #000000;
-    --hero-content-bg: #000000;
+
     --row-bg-even: #252525;
     --row-bg-odd: #1a1a1a;
     --white: #ffffff;
@@ -434,13 +434,13 @@ body.hide-nav .top-bar {
 .hero-content {
     position: relative;
     z-index: 10;
-    background: var(--hero-content-bg);
-    border: var(--border-thick);
-    margin: 4%;
-    padding: 30px;
+    background: linear-gradient(to right, rgba(180, 0, 0, 0.55) 0%, rgba(120, 0, 0, 0.2) 60%, transparent 100%);
+    border: none;
+    margin: 4% 0 4% 0;
+    padding: 30px 40px 30px 4%;
     max-width: 700px;
-    box-shadow: var(--shadow-brutal-blue);
-    color: var(--text-primary);
+    box-shadow: none;
+    color: #ffffff;
 }
 
 .hero-title {
@@ -506,21 +506,44 @@ body.hide-nav .top-bar {
 .btn-primary {
     background: var(--red);
     color: var(--white);
+    transition: background 0.2s, color 0.2s, transform 0.1s, box-shadow 0.2s;
+}
+
+.btn-primary:hover {
+    background: #ffffff;
+    color: var(--red);
+    box-shadow: 6px 6px 0px var(--red);
+    transform: translate(-2px, -2px);
 }
 
 .btn-secondary {
     background: var(--blue);
     color: var(--white);
+    transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
 }
 
-/* Content Rows */
+.btn-secondary:hover {
+    background: #1a6bff;
+    box-shadow: 6px 6px 0px var(--black);
+    transform: translate(-2px, -2px);
+}
+
 .row {
     padding: 40px 4%;
     background: var(--row-bg-odd);
+    overflow: visible;
 }
 
 .row:nth-child(even) {
     background: var(--row-bg-even);
+}
+
+.row-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 20px;
+    padding-right: 4%;
 }
 
 .row-title {
@@ -531,53 +554,347 @@ body.hide-nav .top-bar {
     background: var(--black);
     color: var(--white);
     padding: 5px 20px;
-    margin-bottom: 30px;
+    margin-bottom: 0;
     box-shadow: 6px 6px 0px var(--blue);
+}
+
+.view-all-btn {
+    background: transparent;
+    border: none;
+    color: var(--gray);
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: color 0.2s ease;
+    padding: 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.view-all-btn:hover {
+    color: var(--red);
+}
+
+.view-all-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.results-grid {
+    display: grid;
+    /* Use minmax to ensure columns can squeeze if needed */
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 30px 15px;
+    /* Strict horizontal gap */
+    padding: 0 4%;
+    width: 100%;
+    margin: 0 auto;
+    /* Center the grid block itself horizontally */
+    align-content: start;
+    flex: 1;
+}
+
+/* Specific scale for grid items to fit more and avoid overlapping rows */
+.results-grid .poster-wrap {
+    width: 100%;
+    max-width: 260px;
+    margin: 0 auto;
+    /* Make sure the poster sits dead center in its expanding 1fr track */
+}
+
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    padding: 20px 0;
+    font-family: var(--font-mono);
+    color: var(--white);
+}
+
+.pagination-controls button {
+    background: var(--blue);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    font-size: 1rem;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+    border-radius: 4px;
+}
+
+.pagination-controls button:disabled {
+    background: #333;
+    color: #666;
+    cursor: not-allowed;
+}
+
+
+.row-scroll-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+/* Left and right fade overlays — visual only, cards underneath stay clickable */
+.row-scroll-container::before,
+.row-scroll-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 80px;
+    z-index: 4;
+    /* above cards, below arrows (z-index:5) */
+    pointer-events: none;
+}
+
+.row-scroll-container::before {
+    left: 44px;
+    /* start just after the left arrow button */
+    background: linear-gradient(to right,
+            var(--row-bg-odd) 0%,
+            transparent 100%);
+}
+
+.row-scroll-container::after {
+    right: 44px;
+    /* start just before the right arrow button */
+    background: linear-gradient(to left,
+            var(--row-bg-odd) 0%,
+            transparent 100%);
+}
+
+/* Same fade for even rows */
+.row:nth-child(even) .row-scroll-container::before {
+    background: linear-gradient(to right, var(--row-bg-even) 0%, transparent 100%);
+}
+
+.row:nth-child(even) .row-scroll-container::after {
+    background: linear-gradient(to left, var(--row-bg-even) 0%, transparent 100%);
+}
+
+/* Hide left fade when at the very start; hide right fade when at the very end */
+.row-scroll-container.at-start::before {
+    display: none;
+}
+
+.row-scroll-container.at-end::after {
+    display: none;
 }
 
 .row-posters {
     display: flex;
     gap: 25px;
     overflow-x: auto;
-    padding-bottom: 20px;
+    overflow-y: visible;
+    padding: 8px 12px 12px;
+    flex: 1;
+    scroll-behavior: smooth;
+    /* hide scrollbar — all browsers */
+    scrollbar-width: none;
+    /* Firefox */
+    -ms-overflow-style: none;
+    /* IE/Edge */
 }
 
 .row-posters::-webkit-scrollbar {
-    height: 10px;
+    display: none;
+    /* Chrome/Safari */
 }
 
-.row-posters::-webkit-scrollbar-thumb {
+
+/* Arrow buttons */
+.row-arrow {
+    flex-shrink: 0;
+    width: 44px;
+    height: 100%;
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: var(--black);
+    color: var(--red);
+    border: none;
+    border-top: var(--border-thick);
+    border-bottom: var(--border-thick);
+    font-size: 1.3rem;
+    cursor: pointer;
+    z-index: 5;
+    transition: background 0.15s, color 0.15s, opacity 0.2s;
+    opacity: 1;
+}
+
+.row-arrow-left {
+    border-right: var(--border-thick);
+}
+
+.row-arrow-right {
+    border-left: var(--border-thick);
+}
+
+.row-arrow:hover {
+    background: var(--red);
+    color: #ffffff;
+}
+
+.row-arrow.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+#poster-popup {
+    cursor: pointer;
+}
+
+
+
+/* ── Poster Card with Hover Overlay ── */
+.poster-wrap {
+    position: relative;
+    width: 220px;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    z-index: 1;
+}
+
+.poster-wrap:hover {
+    transform: scale(1.06);
+    z-index: 2;
 }
 
 .poster {
-    width: 220px;
+    width: 100%;
+    display: block;
     border: var(--border-thick);
     box-shadow: var(--shadow-brutal);
-    transition: transform 0.1s;
-    cursor: pointer;
     filter: grayscale(0.5);
+    transition: filter 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
 
-.poster:hover {
-    transform: translate(-4px, -4px);
-    box-shadow: 12px 12px 0px var(--red);
-    filter: grayscale(0) contrast(1.2);
-    animation: shake 0.2s infinite;
+.poster-wrap:hover .poster {
+    filter: grayscale(0) contrast(1.1);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65);
+    border-color: var(--red);
 }
 
-@keyframes shake {
-    0% {
-        transform: translate(-4px, -4px);
-    }
+/* ── Fixed portal popup — overlays exactly on the hovered card ── */
+#poster-popup {
+    position: fixed;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    border: 3px solid var(--red);
+    box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.7);
+}
 
-    50% {
-        transform: translate(-5px, -3px);
-    }
+#poster-popup.visible {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    pointer-events: auto;
+}
 
-    100% {
-        transform: translate(-4px, -4px);
-    }
+#popup-img {
+    width: 100%;
+    display: block;
+    object-fit: cover;
+    max-height: 180px;
+}
+
+#popup-info {
+    background: linear-gradient(to bottom,
+            rgba(140, 0, 0, 0.95) 0%,
+            rgba(55, 0, 0, 0.98) 100%);
+    padding: 12px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#popup-title {
+    font-family: var(--font-mono);
+    font-weight: 800;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    color: #ffffff;
+    margin: 0;
+    letter-spacing: 0.5px;
+    line-height: 1.2;
+}
+
+#popup-desc {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: rgba(255, 255, 255, 0.85);
+    margin: 0;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+#popup-play-btn {
+    align-self: flex-start;
+    margin-top: 4px;
+    background: #cc0000;
+    color: #fff;
+    border: 2px solid #fff;
+    padding: 6px 16px;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: background 0.2s, color 0.2s, transform 0.1s, box-shadow 0.2s;
+}
+
+#popup-play-btn:hover {
+    background: #ffffff;
+    color: var(--red);
+    box-shadow: 4px 4px 0px var(--red);
+    transform: translate(-2px, -2px);
+}
+
+#popup-play-btn:active {
+    transform: translate(1px, 1px);
+    box-shadow: 2px 2px 0px var(--red);
+}
+
+/* ── Preview page action buttons ── */
+.preview-play-btn,
+.preview-list-btn {
+    transition: background 0.2s, color 0.2s, transform 0.1s, box-shadow 0.2s;
+}
+
+.preview-play-btn:hover {
+    background: #ffffff !important;
+    color: var(--red) !important;
+    box-shadow: 6px 6px 0px var(--red);
+    transform: translate(-2px, -2px);
+}
+
+.preview-list-btn:hover {
+    background: #ffffff !important;
+    color: var(--blue) !important;
+    box-shadow: 6px 6px 0px var(--blue);
+    transform: translate(-2px, -2px);
+}
+
+.preview-play-btn:active,
+.preview-list-btn:active {
+    transform: translate(2px, 2px) !important;
+    box-shadow: 2px 2px 0px var(--black) !important;
 }
 
 
@@ -1563,5 +1880,100 @@ body.hide-nav .top-bar {
     .genre-card {
         padding: 10px;
         font-size: 0.85rem;
+    }
+}
+
+/* Search Filters Styling */
+.search-page-header {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    max-width: 800px;
+    margin: 0 auto 30px auto;
+}
+
+.search-page-input-wrapper {
+    display: flex;
+    gap: 10px;
+}
+
+.search-filters {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.search-filter-select,
+.search-filter-input {
+    background: var(--navbar-bg);
+    color: var(--white);
+    border: 2px solid var(--border-color);
+    padding: 10px 15px;
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: bold;
+    outline: none;
+    box-shadow: 4px 4px 0px var(--blue);
+    transition: all 0.2s ease;
+}
+
+.search-filter-select:focus,
+.search-filter-input:focus {
+    border-color: var(--red);
+    box-shadow: 4px 4px 0px var(--red);
+}
+
+.search-filter-input {
+    width: 120px;
+}
+
+/* --- Mobile Grid & Row Optimizations --- */
+@media (max-width: 768px) {
+
+    /* Optimize the View All grid for smaller screens (guarantee tight center-packing) */
+    .results-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 20px 10px;
+        padding: 0 4%;
+        width: 100%;
+        margin: 0 auto;
+    }
+
+    .results-grid .poster-wrap {
+        width: 100%;
+        max-width: 200px;
+        margin: 0 auto;
+    }
+
+    /* Hide the scroll arrows on mobile */
+    .row-arrow {
+        display: none !important;
+    }
+
+    /* Remove the fade overlays so they don't block touch scrolling near the edges */
+    .row-scroll-container::before,
+    .row-scroll-container::after {
+        display: none !important;
+    }
+
+    /* Enable smooth manual horizontal scrolling with snap points */
+    .row-posters {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x mandatory;
+        padding: 10px 4%;
+        gap: 15px;
+    }
+
+    /* Snap each poster to the start of the scroll view */
+    .row-posters .poster-wrap {
+        scroll-snap-align: start;
+        width: 130px;
+        /* smaller posters for mobile rows */
+    }
+
+    /* Allow the popup to be smaller and centered on mobile if it triggers */
+    #poster-popup {
+        width: 280px;
     }
 }
