@@ -12,4 +12,9 @@ const VIDKING_CONFIG = {
     TV_URL: 'https://vidking.net/embed/tv/'
 };
 
-export { TMDB_CONFIG, VIDKING_CONFIG };
+const OMDB_CONFIG = {
+    BASE_URL: 'https://www.omdbapi.com/',
+    API_KEY: '47b992b2'
+};
+
+export { TMDB_CONFIG, VIDKING_CONFIG, OMDB_CONFIG };

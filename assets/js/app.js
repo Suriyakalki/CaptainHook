@@ -1,9 +1,88 @@
-import { tmdb } from './tmdbService.js?v=20.0';
-import { TMDB_CONFIG, VIDKING_CONFIG } from './config.js?v=20.0';
+import { tmdb } from './tmdbService.js?v=44.0';
+import { TMDB_CONFIG, VIDKING_CONFIG, OMDB_CONFIG } from './config.js?v=44.0';
 
 // ── My List (Watchlist) Helpers ──────────────────────────────────────────────
 const STORAGE_KEY = 'captain-hook-list';
 const HISTORY_KEY = 'captain-hook-history';
+const RATING_CACHE = JSON.parse(localStorage.getItem('captain-hook-ratings') || '{}');
+
+function saveRatingToCache(id, rating) {
+    RATING_CACHE[id] = rating;
+    localStorage.setItem('captain-hook-ratings', JSON.stringify(RATING_CACHE));
+}
+
+async function getImdbRating(id, type) {
+    if (RATING_CACHE[id]) return RATING_CACHE[id];
+
+    try {
+        const details = await tmdb.getDetails(type, id);
+        const imdbId = details.imdb_id || (details.external_ids && details.external_ids.imdb_id);
+        if (!imdbId) return null;
+
+        const omdbData = await tmdb.getOMDbDetails(imdbId);
+        if (omdbData && omdbData.imdbRating && omdbData.imdbRating !== 'N/A') {
+            const rating = omdbData.imdbRating;
+            saveRatingToCache(id, rating);
+            return rating;
+        }
+    } catch (err) {
+        console.error(`Error fetching IMDb rating for ${id}:`, err);
+    }
+    return null;
+}
+
+async function enrichResultsWithIMDb(items, defaultType) {
+    const enriched = await Promise.all(items.map(async (item) => {
+        const type = item.media_type || defaultType;
+        const rating = await getImdbRating(item.id, type);
+        return { ...item, imdbRating: rating ? parseFloat(rating) : 0 };
+    }));
+    return enriched;
+}
+
+// ── Skeletons & Loaders ──────────────────────────────────────────────────────
+function getSkeletonRow(title) {
+    return `
+        <div class="row">
+            <div class="row-header"><h2 class="row-title">${title}</h2></div>
+            <div class="row-scroll-container">
+                <div class="row-posters">
+                    ${Array(6).fill('<div class="skeleton skeleton-poster"></div>').join('')}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function getSkeletonHero() {
+    return `<div class="skeleton skeleton-hero"></div>`;
+}
+
+// ── Dynamic Vibrant Theme ────────────────────────────────────────────────────
+async function getVibrantColor(imageUrl) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.src = imageUrl;
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 1; canvas.height = 1;
+            ctx.drawImage(img, 0, 0, 1, 1);
+            const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+            resolve(`rgb(${r},${g},${b})`);
+        };
+        img.onerror = () => resolve('rgb(20,20,20)');
+    });
+}
+
+function updateVibrantTheme(color) {
+    const root = document.documentElement;
+    root.style.setProperty('--vibrant-bg', color);
+    // Create a brighter/saturated version for accent
+    const accent = color.replace('rgb', 'rgba').replace(')', ', 0.8)');
+    root.style.setProperty('--vibrant-accent', color === 'rgb(20,20,20)' ? 'var(--red)' : color);
+}
 
 function getHistory() {
     return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
@@ -15,6 +94,8 @@ function saveToHistory(item) {
     if (index > -1) {
         history.splice(index, 1);
     }
+    // Add progress for visual demo (random between 20 and 90)
+    item.progress = Math.floor(Math.random() * 70) + 20;
     history.unshift(item);
     if (history.length > 20) {
         history.pop();
@@ -215,70 +296,117 @@ async function renderView(view, ...args) {
 
     // Reset layout state
     document.body.classList.remove('hide-nav');
+    contentRows.classList.remove('vibrant-themed');
+
+    console.log(`Rendering View: ${view}`, args);
 
     try {
         if (view === 'home') {
+            // Home skeleton
             heroSection.style.display = 'flex';
-            const trending = await tmdb.getTrending('movie');
-            if (trending && trending.results.length > 0) renderHero(trending.results[0]);
-
+            heroSection.innerHTML = getSkeletonHero();
             contentRows.innerHTML = '';
 
-            const history = getHistory();
-            if (history.length > 0) {
-                renderRow('CONTINUE_WATCHING', history, null);
+            const skeletonCategories = [
+                { title: 'CONTINUE WATCHING', key: 'CONTINUE WATCHING' },
+                { title: 'Top Rated Movies', key: 'top-rated:movie' },
+                { title: 'Popular TV Shows', key: 'popular:tv' },
+                { title: 'Action Movies', key: 'genre:movie:28' },
+                { title: 'Sci-Fi Movies', key: 'genre:movie:878' },
+                { title: 'Horror Movies', key: 'genre:movie:27' },
+                { title: 'Animations', key: 'genre:movie:16' }
+            ];
+            skeletonCategories.forEach(cat => {
+                contentRows.innerHTML += `<div data-skeleton="${cat.key}">${getSkeletonRow(cat.title)}</div>`;
+            });
+
+            // Actual data fetch
+            const trending = await tmdb.getTrending('movie');
+            if (trending && trending.results && trending.results.length > 0) {
+                renderHero(trending.results[0]);
+            } else if (!trending) {
+                throw new Error('CONNECTION_TIMEOUT');
+            }
+
+            const historyItems = getHistory();
+            if (historyItems.length > 0) {
+                renderContinueWatchingRow('CONTINUE WATCHING', historyItems);
+            } else {
+                const cwSkeleton = contentRows.querySelector('[data-skeleton="CONTINUE WATCHING"]');
+                if (cwSkeleton) cwSkeleton.remove();
             }
 
             const categories = [
-                { title: 'Top_Rated_Movies', key: 'top-rated:movie', fetch: () => tmdb.getTopRated('movie') },
-                { title: 'Popular_TV_Shows', key: 'popular:tv', fetch: () => tmdb.getPopular('tv') },
-                { title: 'Action_Movies', key: 'genre:movie:28', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '28' }) },
-                { title: 'Sci-Fi_Movies', key: 'genre:movie:878', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '878' }) },
-                { title: 'Horror_Movies', key: 'genre:movie:27', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '27' }) },
+                { title: 'Top Rated Movies', key: 'top-rated:movie', fetch: () => tmdb.getTopRated('movie') },
+                { title: 'Popular TV Shows', key: 'popular:tv', fetch: () => tmdb.getPopular('tv') },
+                { title: 'Action Movies', key: 'genre:movie:28', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '28' }) },
+                { title: 'Sci-Fi Movies', key: 'genre:movie:878', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '878' }) },
+                { title: 'Horror Movies', key: 'genre:movie:27', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '27' }) },
                 { title: 'Animations', key: 'genre:movie:16', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '16' }) }
             ];
-            for (const cat of categories) {
-                const data = await cat.fetch();
-                if (data && data.results) renderRow(cat.title, data.results, cat.key);
-            }
+            categories.forEach(cat => {
+                cat.fetch()
+                    .then(async data => {
+                        if (data && data.results) {
+                            const enriched = await enrichResultsWithIMDb(data.results, cat.key.includes('movie') ? 'movie' : 'tv');
+                            enriched.sort((a, b) => b.imdbRating - a.imdbRating);
+                            renderRow(cat.title, enriched, cat.key);
+                        }
+                    })
+                    .catch(err => console.error(`Failed loading category: ${cat.title}`, err));
+            });
         }
         else if (view === 'movies') {
             heroSection.style.display = 'none';
-            contentRows.innerHTML = '<div style="padding: 40px 4%"><h2 class="row-title">Movies</h2></div>';
+            contentRows.innerHTML = `
+                <div style="padding: 40px 4% 10px"><h2 class="row-title">MOVIES</h2></div>
+                <div id="movies-content"></div>
+            `;
+            const moviesContent = document.getElementById('movies-content');
             const movieCategories = [
                 { title: 'Popular Movies', key: 'popular:movie', fetch: () => tmdb.getPopular('movie') },
                 { title: 'Top Rated Movies', key: 'top-rated:movie', fetch: () => tmdb.getTopRated('movie') },
                 { title: 'Action', key: 'genre:movie:28', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '28' }) },
-                { title: 'Comedy', key: 'genre:movie:35', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '35' }) },
-                { title: 'Drama', key: 'genre:movie:18', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '18' }) },
-                { title: 'Horror', key: 'genre:movie:27', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '27' }) },
-                { title: 'Sci-Fi', key: 'genre:movie:878', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '878' }) },
-                { title: 'Animation', key: 'genre:movie:16', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '16' }) },
-                { title: 'Thriller', key: 'genre:movie:53', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '53' }) },
-                { title: 'Romance', key: 'genre:movie:10749', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '10749' }) },
+                { title: 'Sci-Fi', key: 'genre:movie:878', fetch: () => tmdb.fetchFromTMDB('/discover/movie', { with_genres: '878' }) }
             ];
+            movieCategories.forEach(cat => {
+                moviesContent.innerHTML += `<div data-skeleton="${cat.key}">${getSkeletonRow(cat.title)}</div>`;
+            });
+
             for (const cat of movieCategories) {
-                const data = await cat.fetch();
-                if (data && data.results) renderRow(cat.title, data.results, cat.key);
+                cat.fetch().then(async data => {
+                    if (data && data.results) {
+                        const enriched = await enrichResultsWithIMDb(data.results, 'movie');
+                        enriched.sort((a, b) => b.imdbRating - a.imdbRating);
+                        renderRow(cat.title, enriched, cat.key);
+                    }
+                });
             }
         }
         else if (view === 'tv') {
             heroSection.style.display = 'none';
-            contentRows.innerHTML = '<div style="padding: 40px 4%"><h2 class="row-title">TV Shows</h2></div>';
+            contentRows.innerHTML = `
+                <div style="padding: 40px 4% 10px"><h2 class="row-title">TV SHOWS</h2></div>
+                <div id="tv-content"></div>
+            `;
+            const tvContent = document.getElementById('tv-content');
             const tvCategories = [
                 { title: 'Popular TV Shows', key: 'popular:tv', fetch: () => tmdb.getPopular('tv') },
                 { title: 'Top Rated TV Shows', key: 'top-rated:tv', fetch: () => tmdb.getTopRated('tv') },
-                { title: 'Action & Adventure', key: 'genre:tv:10759', fetch: () => tmdb.fetchFromTMDB('/discover/tv', { with_genres: '10759' }) },
-                { title: 'Drama', key: 'genre:tv:18', fetch: () => tmdb.fetchFromTMDB('/discover/tv', { with_genres: '18' }) },
-                { title: 'Comedy', key: 'genre:tv:35', fetch: () => tmdb.fetchFromTMDB('/discover/tv', { with_genres: '35' }) },
-                { title: 'Sci-Fi & Fantasy', key: 'genre:tv:10765', fetch: () => tmdb.fetchFromTMDB('/discover/tv', { with_genres: '10765' }) },
-                { title: 'Crime', key: 'genre:tv:80', fetch: () => tmdb.fetchFromTMDB('/discover/tv', { with_genres: '80' }) },
-                { title: 'Animation', key: 'genre:tv:16', fetch: () => tmdb.fetchFromTMDB('/discover/tv', { with_genres: '16' }) },
-                { title: 'Mystery', key: 'genre:tv:9648', fetch: () => tmdb.fetchFromTMDB('/discover/tv', { with_genres: '9648' }) },
+                { title: 'Sci-Fi_&_Fantasy', key: 'genre:tv:10765', fetch: () => tmdb.fetchFromTMDB('/discover/tv', { with_genres: '10765' }) }
             ];
+            tvCategories.forEach(cat => {
+                tvContent.innerHTML += `<div data-skeleton="${cat.key}">${getSkeletonRow(cat.title)}</div>`;
+            });
+
             for (const cat of tvCategories) {
-                const data = await cat.fetch();
-                if (data && data.results) renderRow(cat.title, data.results, cat.key);
+                cat.fetch().then(async data => {
+                    if (data && data.results) {
+                        const enriched = await enrichResultsWithIMDb(data.results, 'tv');
+                        enriched.sort((a, b) => b.imdbRating - a.imdbRating);
+                        renderRow(cat.title, enriched, cat.key);
+                    }
+                });
             }
         }
         else if (view === 'list') {
@@ -318,7 +446,7 @@ async function renderView(view, ...args) {
             contentRows.innerHTML = '';
             const header = document.createElement('div');
             header.style.cssText = 'padding: 40px 4% 20px';
-            header.innerHTML = `<h2 class="row-title">WATCH_HISTORY <span style="font-size:1rem; margin-left:10px;">[${history.length}]</span></h2>`;
+            header.innerHTML = `<h2 class="row-title">WATCH HISTORY <span style="font-size:1rem; margin-left:10px;">[${history.length}]</span></h2>`;
             contentRows.appendChild(header);
 
             if (history.length === 0) {
@@ -348,7 +476,7 @@ async function renderView(view, ...args) {
             heroSection.style.display = 'none';
             contentRows.innerHTML = `
                 <div style="padding: 40px 4% 20px">
-                    <button class="preview-back-btn" onclick="history.back()" style="position:static;margin-bottom:20px;">
+                    <button class="preview-back-btn" onclick="history.back()">
                         <i class="fas fa-arrow-left"></i> BACK
                     </button>
                     <h2 class="row-title">${catTitle || fetchKey}</h2>
@@ -375,7 +503,7 @@ async function renderView(view, ...args) {
             contentRows.innerHTML = `
                 <div class="view-all-container">
                     <div style="padding: 40px 4% 10px;">
-                        <button class="preview-back-btn" onclick="history.back()" style="position:static; margin-bottom:15px;">
+                        <button class="preview-back-btn" onclick="history.back()">
                             <i class="fas fa-arrow-left"></i> BACK
                         </button>
                         <h2 class="row-title">${catTitle || fetchKey}</h2>
@@ -402,10 +530,12 @@ async function renderView(view, ...args) {
                 try {
                     const data = await fetcher(currentTMDBPage);
                     if (data && data.results) {
-                        totalTMDBPages = Math.min(data.total_pages, 500); // TMDB limits multi-page access
+                        totalTMDBPages = Math.min(data.total_pages, 500);
                         const validItems = data.results.filter(i => i.poster_path);
+                        const enriched = await enrichResultsWithIMDb(validItems, mediaType);
+                        enriched.sort((a, b) => b.imdbRating - a.imdbRating);
 
-                        const htmlStr = validItems.map(i => makePosterWrap(i, i.media_type || mediaType)).join('');
+                        const htmlStr = enriched.map(i => makePosterWrap(i, i.media_type || mediaType)).join('');
                         grid.insertAdjacentHTML('beforeend', htmlStr);
                     }
                 } catch (error) {
@@ -452,14 +582,14 @@ async function renderView(view, ...args) {
                     <button class="preview-back-btn" onclick="window.navigateTo('home')" style="position: static; margin-bottom: 20px;">
                         <i class="fas fa-arrow-left"></i> BACK
                     </button>
-                    <h2 class="row-title">BROWSE_BY_GENRE</h2>
+                    <h2 class="row-title">BROWSE BY GENRE</h2>
                     <div class="genre-container">
                         <div class="genre-section">
                             <h3 class="genre-sub-title">MOVIES</h3>
                             <div class="genre-grid" id="movie-genres"></div>
                         </div>
                         <div class="genre-section">
-                            <h3 class="genre-sub-title">TV_SHOWS</h3>
+                            <h3 class="genre-sub-title">TV SHOWS</h3>
                             <div class="genre-grid" id="tv-genres"></div>
                         </div>
                     </div>
@@ -540,12 +670,20 @@ async function renderView(view, ...args) {
                 if (filtered && filtered.length > 0) {
                     const row = document.createElement('div');
                     row.className = 'row';
-                    // Render exactly like the responsive view-all page grid
-                    row.innerHTML = `
-                        <div class="results-grid" style="padding-top: 20px;">
-                            ${filtered.map(item => makePosterWrap(item, item.media_type || 'movie')).join('')}
-                        </div>`;
-                    resultsContainer.appendChild(row);
+
+                    // Show a message that we're enriching
+                    resultsContainer.innerHTML += `<div id="enrich-msg" style="padding:0 4%; font-family:var(--font-mono); font-size:0.8rem; color:var(--text-secondary);">ENRICHING_RATINGS...</div>`;
+
+                    enrichResultsWithIMDb(filtered, 'movie').then(enriched => {
+                        const msg = document.getElementById('enrich-msg');
+                        if (msg) msg.remove();
+                        enriched.sort((a, b) => b.imdbRating - a.imdbRating);
+                        row.innerHTML = `
+                            <div class="results-grid" style="padding-top: 20px;">
+                                ${enriched.map(item => makePosterWrap(item, item.media_type || 'movie')).join('')}
+                            </div>`;
+                        resultsContainer.appendChild(row);
+                    });
                 } else {
                     resultsContainer.innerHTML += '<p style="font-family: var(--font-mono); font-size: 1.2rem; padding: 20px 4%;">NO_RESULTS_FOUND</p>';
                 }
@@ -613,83 +751,137 @@ async function renderView(view, ...args) {
 
             if (!details) throw new Error('Details not found');
 
-            const cast = details.credits.cast.slice(0, 5).map(c => c.name).join(', ');
-            const backdrop = `${TMDB_CONFIG.IMAGE_BASE_URL}/${TMDB_CONFIG.BACKDROP_SIZE}${details.backdrop_path}`;
-            const poster = `${TMDB_CONFIG.IMAGE_BASE_URL}/w500${details.poster_path}`;
-
             const isTv = type === 'tv';
             const seasons = isTv && details.seasons ? details.seasons.filter(s => s.season_number > 0) : [];
+            const backdropPath = `${TMDB_CONFIG.IMAGE_BASE_URL}/${TMDB_CONFIG.BACKDROP_SIZE}${details.backdrop_path}`;
+            const posterPath = `${TMDB_CONFIG.IMAGE_BASE_URL}/w500${details.poster_path}`;
+
+            // Vibrant Color Extraction
+            const vColor = await getVibrantColor(posterPath);
+            updateVibrantTheme(vColor);
+
+            contentRows.classList.add('vibrant-themed');
+
+            // OMDb Fetch
+            const imdbId = details.imdb_id || (details.external_ids && details.external_ids.imdb_id);
+            let omdbRatingHtml = '';
+            if (imdbId) {
+                const omdbData = await tmdb.getOMDbDetails(imdbId);
+                if (omdbData && omdbData.imdbRating && omdbData.imdbRating !== 'N/A') {
+                    omdbRatingHtml = `<p><strong>IMDb RATING:</strong> 🟡 ${omdbData.imdbRating}</p>`;
+                }
+            }
+
+            const castHtml = details.credits.cast.slice(0, 10).map(c => `
+                <div class="cast-card" onclick="window.openPerson(${c.id})">
+                    <div class="cast-img-wrap">
+                        <img class="cast-img" src="${c.profile_path ? TMDB_CONFIG.IMAGE_BASE_URL + '/w185' + c.profile_path : 'assets/img/no-profile.png'}" alt="${c.name}">
+                    </div>
+                    <div class="cast-name">${c.name}</div>
+                </div>
+            `).join('');
+
+            // Extract main crew
+            const targetJobs = ['Director', 'Writer', 'Screenplay', 'Producer', 'Executive Producer'];
+            const importantCrew = details.credits.crew
+                .filter(c => targetJobs.includes(c.job))
+                .reduce((acc, current) => {
+                    const x = acc.find(item => item.id === current.id);
+                    if (!x) {
+                        return acc.concat([current]);
+                    } else {
+                        // Concatenate jobs if same person has multiple
+                        if (!x.job.includes(current.job)) {
+                            x.job += ', ' + current.job;
+                        }
+                        return acc;
+                    }
+                }, [])
+                .slice(0, 10);
+
+            const crewHtml = importantCrew.map(c => `
+                <div class="cast-card" onclick="window.openPerson(${c.id})">
+                    <div class="cast-img-wrap">
+                        <img class="cast-img" src="${c.profile_path ? TMDB_CONFIG.IMAGE_BASE_URL + '/w185' + c.profile_path : 'assets/img/no-profile.png'}" alt="${c.name}">
+                    </div>
+                    <div class="cast-name">${c.name}</div>
+                    <div class="cast-role" style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">${c.job}</div>
+                </div>
+            `).join('');
 
             const seasonSelector = isTv ? `
-                <div class="season-browser">
-                    <div class="season-header" style="display:flex; flex-wrap:wrap; align-items:center; gap:30px; justify-content:flex-start;">
+                <div class="season-browser" style="margin-top:30px;">
+                    <div class="season-header" style="display:flex; flex-wrap:wrap; align-items:center; gap:20px; justify-content:flex-start;">
                         <div style="display:flex; align-items:center; gap:10px;">
                             <label class="season-label">SEASON</label>
                             <select class="season-select" id="season-select-${id}" onchange="window.loadEpisodes(${id}, this.value)">
-                                ${seasons.map(s => `<option value="${s.season_number}">Season ${s.season_number} (${s.episode_count} eps)</option>`).join('')}
+                                ${seasons.map(s => `<option value="${s.season_number}">Season ${s.season_number}</option>`).join('')}
                             </select>
                         </div>
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <label class="season-label">EPISODE</label>
-                            <input type="number" id="quick-ep-input-${id}" class="search-filter-input" style="width:70px; padding:5px 10px;" min="1" placeholder="#">
-                            <button class="btn btn-primary" style="padding:6px 15px;" onclick="
-                                const ep = document.getElementById('quick-ep-input-${id}').value;
-                                const sn = document.getElementById('season-select-${id}').value;
-                                if(ep) window.playStream('tv', ${id}, sn, ep);
-                            "><i class="fas fa-play"></i></button>
-                        </div>
                     </div>
-                    <div class="episode-list" id="episode-list-${id}">
-                        <div class="loader" style="padding: 30px; font-size: 1rem;">LOADING_EPISODES...</div>
-                    </div>
+                    <div class="episode-list" id="episode-list-${id}"></div>
                 </div>` : '';
 
             contentRows.innerHTML = `
                 <div class="preview-card details-page">
-                    <div class="preview-backdrop-wrap">
-                        <img class="preview-backdrop-img" src="${backdrop}" alt="${details.title || details.name}">
-                        <button class="preview-back-btn" onclick="history.back()">
-                            <i class="fas fa-arrow-left"></i> BACK
-                        </button>
-                        <div class="preview-actions">
-                            <button class="preview-play-btn" onclick="window.playStream('${type}', ${id})">
-                                <i class="fas fa-play"></i> PLAY
-                            </button>
-                            <button class="preview-list-btn toggle-list-btn" data-id="${id}" onclick="window.toggleFromListing('${type}', ${id}, '${(details.title || details.name).replace(/'/g, "\\'")}', '${details.poster_path}', '${(details.overview || '').slice(0, 160).replace(/'/g, "\\'").replace(/"/g, '')}')">
-                                ${isInList(id) ? '<i class="fas fa-minus"></i> REMOVE' : '<i class="fas fa-plus"></i> MY LIST'}
-                            </button>
-                        </div>
-                    </div>
-                    <div class="preview-details distressed">
-                        <div class="preview-details-inner">
-                            <div class="preview-top-row">
-                                <img class="preview-poster-thumb" src="${poster}" alt="${details.title || details.name}">
-                                <div class="preview-title-meta">
-                                    <h1 class="preview-title glitch">${details.title || details.name}</h1>
-                                    <div class="preview-meta">
-                                        <span>RELEASE: ${details.release_date || details.first_air_date}</span>
-                                        <span>RATING: ⭐ ${details.vote_average.toFixed(1)}</span>
-                                        ${isTv ? `<span>SEASONS: ${seasons.length}</span>` : ''}
-                                    </div>
-                                </div>
+                    <div class="details-grid">
+                        <div class="details-poster-area">
+                            <img src="${posterPath}" alt="${details.title || details.name}" style="width:100%;">
+                            <div class="meta-sidebar" style="margin-top:20px; font-family:var(--font-mono); font-size:0.8rem; color:var(--text-secondary);">
+                                <p><strong>STATUS:</strong> ${details.status}</p>
+                                ${omdbRatingHtml}
+                                <p><strong>RELEASE:</strong> ${details.release_date || details.first_air_date}</p>
                             </div>
-                            <p class="preview-overview">${details.overview}</p>
-                            <p class="cast-list"><strong>CAST:</strong> ${cast || 'N/A'}</p>
+                        </div>
+                        <div class="details-info-area">
+                            <button class="preview-back-btn" onclick="history.back()">
+                                <i class="fas fa-arrow-left"></i> BACK
+                            </button>
+                            <h1 class="preview-title glitch">${details.title || details.name}</h1>
+                            <div class="genres-row" style="display:flex; gap:10px; flex-wrap:wrap;">
+                                ${details.genres.map(g => `<span class="genre-tag" style="background:var(--vibrant-accent); padding:4px 10px; border-radius:4px; font-size:0.7rem; font-weight:700;">${g.name.toUpperCase()}</span>`).join('')}
+                            </div>
+                            <p class="preview-overview" style="font-size:1.1rem; line-height:1.6; max-width:800px;">${details.overview}</p>
+                            
+                            <div class="preview-actions" style="position:static; padding:0; gap:20px;">
+                                <button class="preview-play-btn" onclick="window.playStream('${type}', ${id})">
+                                    <i class="fas fa-play"></i> PLAY NOW
+                                </button>
+                                <button class="btn btn-secondary" onclick="window.watchTrailer('${type}', ${id})" style="padding:15px 30px; border:var(--border-thick);">
+                                    <i class="fas fa-film"></i> TRAILER
+                                </button>
+                                <button class="preview-list-btn toggle-list-btn" data-id="${id}" onclick="window.toggleFromListing('${type}', ${id}, '${(details.title || details.name).replace(/'/g, "\\'")}', '${details.poster_path}', '${(details.overview || '').slice(0, 160).replace(/'/g, "\\'").replace(/"/g, '')}')">
+                                    ${isInList(id) ? '<i class="fas fa-minus"></i> REMOVE' : '<i class="fas fa-plus"></i> MY LIST'}
+                                </button>
+                            </div>
+
+                            <div class="cast-section">
+                                <h3 class="row-title" style="margin-top:20px; font-size:1.2rem;">THE CAST</h3>
+                                <div class="cast-container">${castHtml}</div>
+                            </div>
+
+                            ${crewHtml ? `
+                            <div class="cast-section" style="margin-top:10px;">
+                                <h3 class="row-title" style="font-size:1.2rem;">THE CREW</h3>
+                                <div class="cast-container">${crewHtml}</div>
+                            </div>` : ''}
+                            
+                            <div style="margin-top: 20px;">
+                                <button class="btn btn-secondary" onclick="window.viewFullCredits(${id}, '${type}', '${(details.title || details.name).replace(/'/g, "\\'")}')" style="padding:10px 20px; border-radius:var(--border-radius); font-size:0.9rem;">
+                                    VIEW FULL CAST & CREW <i class="fas fa-arrow-right"></i>
+                                </button>
+                            </div>
+                            
                             ${seasonSelector}
                         </div>
                     </div>
-                    
+
                     ${similar && similar.results && similar.results.length > 0 ? `
                         <div class="similar-content-section">
-                            <h2 class="row-title" style="margin: 40px 4% 10px;">SIMILAR_TITLES</h2>
+                            <h2 class="row-title" style="margin: 40px 4% 10px;">MORE_LIKE_THIS</h2>
                             <div class="row">
                                 <div class="row-posters">
-                                    ${similar.results.slice(0, 10).map(item => `
-                                        <img class="poster"
-                                             src="${TMDB_CONFIG.IMAGE_BASE_URL}/${TMDB_CONFIG.POSTER_SIZE}${item.poster_path}"
-                                             alt="${item.title || item.name}"
-                                             onclick="window.showPreview('${type}', ${item.id})">
-                                    `).join('')}
+                                    ${similar.results.slice(0, 12).map(item => makePosterWrap(item, type)).join('')}
                                 </div>
                             </div>
                         </div>
@@ -697,6 +889,15 @@ async function renderView(view, ...args) {
                 </div>`;
 
             if (isTv && seasons.length > 0) window.loadEpisodes(id, seasons[0].season_number);
+        }
+        else if (view === 'person') {
+            await renderPersonView(args[0]);
+        }
+        else if (view === 'view-all-person') {
+            await renderViewAllPerson(args[0], args[1]);
+        }
+        else if (view === 'view-full-credits') {
+            await renderFullCredits(args[0], args[1], args[2]);
         }
         else if (view === 'player') {
             const [type, id, season = 1, episode = 1] = args;
@@ -755,8 +956,15 @@ async function renderView(view, ...args) {
             showUI();
         }
     } catch (err) {
-        contentRows.innerHTML = '<div class="loader">ERROR_LOADING_CONTENT</div>';
-        console.error('Render View Error:', err);
+        console.error('View Rendering Error:', err);
+        contentRows.innerHTML = `
+            <div class="connection-error" style="text-align:center; padding:100px 20px; color:var(--text-secondary);">
+                <i class="fas fa-wifi-slash" style="font-size:4rem; margin-bottom:20px; color:var(--red);"></i>
+                <h2 style="font-size:2rem; margin-bottom:10px; color:var(--text-primary);">CONNECTION_ISSUE</h2>
+                <p style="max-width:500px; margin:0 auto 30px; line-height:1.6;">The app is having trouble reaching the database. This often happens on mobile data or certain restricted Wi-Fi networks.</p>
+                <button class="btn btn-primary" onclick="location.reload()">RETRY CONNECTION</button>
+            </div>
+        `;
     }
 }
 
@@ -767,15 +975,25 @@ function renderHero(movie) {
     const added = isInList(movie.id);
     const title = movie.title || movie.name;
 
+    // Fetch IMDb rating for hero asynchronously
+    getImdbRating(movie.id, movie.title ? 'movie' : 'tv').then(rating => {
+        const ratingEl = document.getElementById('hero-imdb-rating');
+        if (ratingEl && rating) {
+            ratingEl.innerHTML = `⭐ ${rating}`;
+            ratingEl.style.display = 'inline-block';
+        }
+    });
+
     hero.innerHTML = `
         <div class="hero-content distressed">
             <h1 class="hero-title glitch" data-text="${title}">${title}</h1>
+            <div id="hero-imdb-rating" style="display:none; background:rgba(0,0,0,0.6); padding:5px 10px; border-radius:4px; margin-bottom:15px; font-weight:bold; color:#f5c518; border:1px solid #f5c518;"></div>
             <p class="hero-overview">${movie.overview}</p>
             <div class="hero-buttons">
-                <button class="btn btn-primary" onclick="window.showPreview('movie', ${movie.id})">
+                <button class="btn btn-primary" onclick="window.playStream('${movie.title ? 'movie' : 'tv'}', ${movie.id})">
                    <i class="fas fa-play"></i> PLAY
                 </button>
-                <button class="btn btn-secondary toggle-list-btn" data-id="${movie.id}" onclick="window.toggleFromListing('movie', ${movie.id}, '${title.replace(/'/g, "\\'")}'.replace(/"/g,''), '${movie.poster_path}', '${(movie.overview || '').slice(0, 160).replace(/'/g, "\\'").replace(/"/g, '')}')">
+                <button class="btn btn-secondary toggle-list-btn" data-id="${movie.id}" onclick="window.toggleFromListing('${movie.title ? 'movie' : 'tv'}', ${movie.id}, '${title.replace(/'/g, "\\'")}'.replace(/"/g,''), '${movie.poster_path}', '${(movie.overview || '').slice(0, 160).replace(/'/g, "\\'").replace(/"/g, '')}')">
                     ${added ? '<i class="fas fa-minus"></i> REMOVE' : '<i class="fas fa-plus"></i> MY LIST'}
                 </button>
             </div>
@@ -789,16 +1007,85 @@ function makePosterWrap(item, type) {
     const raw = item.overview || '';
     const overview = (raw.slice(0, 160) + (raw.length > 160 ? '...' : '')).replace(/"/g, '&quot;');
     const poster = `${TMDB_CONFIG.IMAGE_BASE_URL}/${TMDB_CONFIG.POSTER_SIZE}${item.poster_path}`;
+
+    // Check if we have the rating in cache, otherwise show nothing or a placeholder
+    const rating = RATING_CACHE[item.id];
+    const ratingBadge = rating ? `
+        <div class="poster-rating-badge" style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.85); color:#f5c518; padding:3px 6px; border-radius:4px; font-size:0.75rem; font-weight:800; border:1px solid #f5c518; z-index:2; pointer-events:none;">
+            ${rating}
+        </div>` : '';
+
     return `<div class="poster-wrap"
+                 style="position:relative;"
                  data-id="${item.id}" data-type="${type}"
                  data-title="${name}" data-overview="${overview}" data-poster="${poster}"
                  onclick="window.showPreview('${type}',${item.id})">
+                ${ratingBadge}
                 <img class="poster" src="${poster}" alt="${name}">
             </div>`;
 }
 
+function makeLandscapePosterWrap(item) {
+    const name = (item.title || item.name || '').replace(/"/g, '&quot;');
+    const imagePath = item.backdrop_path || item.poster_path;
+    if (!imagePath) return '';
+
+    const image = `${TMDB_CONFIG.IMAGE_BASE_URL}/${item.backdrop_path ? TMDB_CONFIG.BACKDROP_SIZE : TMDB_CONFIG.POSTER_SIZE}${imagePath}`;
+    const progress = item.progress || Math.floor(Math.random() * 40) + 30; // Default 30-70% for demo
+
+    return `
+        <div class="landscape-poster-wrap" onclick="window.playStream('${item.type}', ${item.id})">
+            <div class="landscape-poster-main">
+                <img class="landscape-poster" src="${image}" alt="${name}">
+                <div class="progress-container">
+                    <div class="progress-fill" style="width: ${progress}%"></div>
+                </div>
+            </div>
+            <div class="landscape-title">${name}</div>
+        </div>
+    `;
+}
+
+function renderContinueWatchingRow(title, history) {
+    const container = document.getElementById('content-rows');
+    // Filter out items that have no images at all
+    const validItems = history.filter(item => item.backdrop_path || item.poster_path);
+    if (validItems.length === 0) return;
+
+    const row = document.createElement('div');
+    row.className = 'row continue-watching-row';
+
+    row.innerHTML = `
+        <div class="row-header">
+            <h2 class="row-title">${title}</h2>
+        </div>
+        <div class="row-scroll-container">
+            <button class="row-arrow row-arrow-left" aria-label="Scroll left"><i class="fas fa-chevron-left"></i></button>
+            <div class="row-posters">
+                ${validItems.map(item => makeLandscapePosterWrap(item)).join('')}
+            </div>
+            <button class="row-arrow row-arrow-right" aria-label="Scroll right"><i class="fas fa-chevron-right"></i></button>
+        </div>
+    `;
+    const existingPlaceholder = container.querySelector('[data-skeleton="CONTINUE WATCHING"]');
+
+    if (existingPlaceholder) {
+        existingPlaceholder.replaceWith(row);
+    } else {
+        const existingRow = Array.from(container.querySelectorAll('.row-title')).find(t => t.textContent === title);
+        if (!existingRow) {
+            container.appendChild(row);
+        } else {
+            existingRow.closest('.row').replaceWith(row);
+        }
+    }
+    setupRowArrows(row);
+}
+
 function renderRow(title, movies, fetchKey) {
     const container = document.getElementById('content-rows');
+    const existingPlaceholder = container.querySelector(`[data-skeleton="${fetchKey}"]`);
+
     const row = document.createElement('div');
     row.className = 'row';
     const mediaType = title.toLowerCase().includes('tv') || title.toLowerCase().includes('show') ? 'tv' : 'movie';
@@ -813,29 +1100,28 @@ function renderRow(title, movies, fetchKey) {
                 <i class="fas fa-chevron-left"></i>
             </button>
             <div class="row-posters">
-                ${movies.filter(m => m.poster_path).map(movie => {
-        const type = movie.media_type || mediaType;
-        const name = (movie.title || movie.name || '').replace(/"/g, '&quot;');
-        const overview = (movie.overview || '').replace(/"/g, '&quot;').slice(0, 160) + ((movie.overview || '').length > 160 ? '...' : '');
-        const posterUrl = `${TMDB_CONFIG.IMAGE_BASE_URL}/${TMDB_CONFIG.POSTER_SIZE}${movie.poster_path}`;
-        return `
-                    <div class="poster-wrap"
-                         data-id="${movie.id}"
-                         data-type="${type}"
-                         data-title="${name}"
-                         data-overview="${overview}"
-                         data-poster="${posterUrl}"
-                         onclick="window.showPreview('${type}', ${movie.id})">
-                        <img class="poster" src="${posterUrl}" alt="${name}">
-                    </div>`;
-    }).join('')}
+                ${movies.filter(m => m.poster_path).map(movie => makePosterWrap(movie, movie.media_type || mediaType)).join('')}
             </div>
             <button class="row-arrow row-arrow-right" aria-label="Scroll right">
                 <i class="fas fa-chevron-right"></i>
             </button>
         </div>
     `;
-    container.appendChild(row);
+
+    if (existingPlaceholder) {
+        existingPlaceholder.replaceWith(row);
+    } else {
+        // Prevent appending if the user navigated away and the skeleton is gone
+        const isCurrentViewMatches = window.location.hash.includes(title.toLowerCase().replace(/[^a-z]/g, '')) || true;
+        // We'll just check if the container is still the same intended page by searching for existing titles
+        const existingRow = Array.from(container.querySelectorAll('.row-title')).find(t => t.textContent === title);
+        if (!existingRow) {
+            container.appendChild(row);
+        } else {
+            // Replace existing row to prevent duplicates
+            existingRow.closest('.row').replaceWith(row);
+        }
+    }
     setupRowArrows(row);
 }
 
@@ -902,9 +1188,14 @@ function initPosterPopup() {
     // Track which card the popup belongs to
     let currentId = null, currentType = null;
 
-    // Clicking anywhere on the popup → details page (play btn stops propagation)
-    popup.addEventListener('click', () => {
-        if (currentId && currentType) window.showPreview(currentType, currentId);
+    // Clicking anywhere on the popup → details page, unless it's the play button
+    popup.addEventListener('click', (e) => {
+        if (!currentId || !currentType) return;
+        if (e.target.closest('#popup-play-btn')) {
+            window.playStream(currentType, currentId);
+        } else {
+            window.showPreview(currentType, currentId);
+        }
     });
 
     const contentRows = document.getElementById('content-rows');
@@ -919,10 +1210,6 @@ function initPosterPopup() {
         document.getElementById('popup-img').src = poster;
         document.getElementById('popup-title').textContent = title;
         document.getElementById('popup-desc').textContent = overview;
-        document.getElementById('popup-play-btn').onclick = ev => {
-            ev.stopPropagation();
-            window.playStream(type, id);
-        };
         const rect = wrap.getBoundingClientRect();
         popup.style.left = rect.left + 'px';
         popup.style.top = rect.top + 'px';
@@ -1019,7 +1306,8 @@ window.playStream = async (type, id, season = 1, episode = 1) => {
                 id,
                 title: details.title || details.name,
                 overview: details.overview,
-                poster_path: details.poster_path
+                poster_path: details.poster_path,
+                backdrop_path: details.backdrop_path
             };
             saveToHistory(item);
         }
@@ -1027,5 +1315,324 @@ window.playStream = async (type, id, season = 1, episode = 1) => {
         console.error('Error saving to history:', err);
     }
     window.navigateTo('player', type, id, season, episode);
+};
+
+// ── Cast & Person Logic ──────────────────────────────────────────────────────
+window.openPerson = (personId) => {
+    window.navigateTo('person', personId);
+};
+
+window.viewAllPerson = (personId, personName, creditType = 'cast') => {
+    window.navigateTo('view-all-person', personId, personName, creditType);
+};
+
+window.switchPersonTab = async (personId, type) => {
+    const container = document.getElementById('person-credits-container');
+    const tabs = document.querySelectorAll('.person-tab');
+    tabs.forEach(t => t.classList.toggle('active', t.textContent.toLowerCase().includes(type)));
+
+    container.innerHTML = '<div class="loader" style="padding:20px;">FETCHING_RATINGS...</div>';
+
+    try {
+        const raw = window.currentPersonCredits[type];
+        const initialCredits = await enrichResultsWithIMDb(raw, 'movie');
+
+        const sortedCredits = initialCredits.sort((a, b) => {
+            const aIsDoc = a.genre_ids && a.genre_ids.includes(99);
+            const bIsDoc = b.genre_ids && b.genre_ids.includes(99);
+            if (aIsDoc && !bIsDoc) return 1;
+            if (!aIsDoc && bIsDoc) return -1;
+            return (b.imdbRating || 0) - (a.imdbRating || 0);
+        });
+
+        container.innerHTML = `
+            <div class="row-header" style="margin: 0 4% 20px; justify-content: flex-end;">
+               <button class="view-all-btn" onclick="window.viewAllPerson(${personId}, '', '${type}')">
+                    VIEW ALL <i class="fas fa-arrow-right"></i>
+                </button>
+            </div>
+            <div class="row">
+                <div class="row-scroll-container at-start">
+                    <button class="row-arrow row-arrow-left hidden"><i class="fas fa-chevron-left"></i></button>
+                    <div class="row-posters">
+                        ${sortedCredits.slice(0, 20).map(m => makePosterWrap(m, 'movie')).join('')}
+                    </div>
+                    <button class="row-arrow row-arrow-right"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>
+        `;
+        setupRowArrows(container.querySelector('.row'));
+    } catch (err) {
+        container.innerHTML = '<div class="loader">ERROR_LOADING_TAB</div>';
+    }
+};
+
+async function renderPersonView(personId) {
+    const contentRows = document.getElementById('content-rows');
+    const heroSection = document.getElementById('hero');
+    heroSection.style.display = 'none';
+    contentRows.innerHTML = '<div class="loader">FETCHING_PERSON_DETAILS...</div>';
+    window.scrollTo(0, 0);
+
+    try {
+        const [details, credits] = await Promise.all([
+            tmdb.getPersonDetails(personId),
+            tmdb.getPersonMovies(personId)
+        ]);
+
+        const isActing = details.known_for_department === 'Acting';
+        const initialType = isActing ? 'cast' : 'crew';
+
+        // Prepare and deduplicate both sets
+        const process = (raw) => {
+            const unique = [];
+            const ids = new Set();
+            for (const c of raw) {
+                if (!ids.has(c.id)) {
+                    unique.push(c);
+                    ids.add(c.id);
+                }
+            }
+            return unique.filter(i => i.poster_path);
+        };
+
+        window.currentPersonCredits = {
+            cast: process(credits.cast),
+            crew: process(credits.crew)
+        };
+
+        const initialCreditsContent = await enrichResultsWithIMDb(window.currentPersonCredits[initialType], 'movie');
+
+        const sortedCredits = initialCreditsContent.sort((a, b) => {
+            const aIsDoc = a.genre_ids && a.genre_ids.includes(99);
+            const bIsDoc = b.genre_ids && b.genre_ids.includes(99);
+            if (aIsDoc && !bIsDoc) return 1;
+            if (!aIsDoc && bIsDoc) return -1;
+            return (b.imdbRating || 0) - (a.imdbRating || 0);
+        });
+
+        const profile = details.profile_path
+            ? `${TMDB_CONFIG.IMAGE_BASE_URL}/h632${details.profile_path}`
+            : 'assets/img/no-profile.png';
+
+        const tabConfigs = [
+            { type: 'cast', label: 'AS CAST MEMBER' },
+            { type: 'crew', label: 'AS CREW MEMBER' }
+        ];
+        if (!isActing) tabConfigs.reverse();
+
+        const tabsHtml = tabConfigs.map(t => `
+            <button class="person-tab ${initialType === t.type ? 'active' : ''}" onclick="window.switchPersonTab(${personId}, '${t.type}')">${t.label}</button>
+        `).join('');
+
+        contentRows.innerHTML = `
+            <div class="preview-card details-page">
+                <div class="details-grid">
+                    <div class="details-poster-area">
+                        <img src="${profile}" alt="${details.name}" style="width:100%;">
+                        <button class="preview-back-btn" onclick="history.back()">
+                            <i class="fas fa-arrow-left"></i> BACK
+                        </button>
+                    </div>
+                    <div class="details-info-area">
+                        <h1 class="preview-title glitch" style="font-size:3rem;">${details.name}</h1>
+                        <div class="preview-meta">
+                            <span>BORN: ${details.birthday || 'N/A'}</span>
+                            <span>PLACE: ${details.place_of_birth || 'N/A'}</span>
+                        </div>
+                        <p class="preview-overview" style="font-size:1rem; line-height:1.6;">${details.biography || 'No biography available.'}</p>
+                    </div>
+                </div>
+                <div class="similar-content-section" style="padding-top:0;">
+                    <div class="row-header" style="margin: 0 4% 0;">
+                        <h2 class="row-title">KNOWN FOR</h2>
+                    </div>
+                    
+                    <div class="person-tabs">
+                        ${tabsHtml}
+                    </div>
+
+                    <div id="person-credits-container">
+                        <div class="row-header" style="margin: 0 4% 20px; justify-content: flex-end;">
+                           <button class="view-all-btn" onclick="window.viewAllPerson(${personId}, '${details.name.replace(/'/g, "\\'")}', '${initialType}')">
+                                VIEW ALL <i class="fas fa-arrow-right"></i>
+                            </button>
+                        </div>
+                        <div class="row">
+                            <div class="row-scroll-container at-start">
+                                <button class="row-arrow row-arrow-left hidden"><i class="fas fa-chevron-left"></i></button>
+                                <div class="row-posters">
+                                    ${sortedCredits.slice(0, 20).map(m => makePosterWrap(m, 'movie')).join('')}
+                                </div>
+                                <button class="row-arrow row-arrow-right"><i class="fas fa-chevron-right"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const rowElement = contentRows.querySelector('.similar-content-section .row');
+        if (rowElement) {
+            setupRowArrows(rowElement);
+        }
+    } catch (err) {
+        contentRows.innerHTML = '<div class="loader">ERROR_LOADING_PERSON</div>';
+        console.error(err);
+    }
+}
+
+async function renderViewAllPerson(personId, personName, creditType = 'cast') {
+    const contentRows = document.getElementById('content-rows');
+    const heroSection = document.getElementById('hero');
+    heroSection.style.display = 'none';
+    contentRows.innerHTML = '<div class="loader">LOADING_CREDITS...</div>';
+    window.scrollTo(0, 0);
+
+    try {
+        const credits = await tmdb.getPersonMovies(personId);
+        const rawCredits = creditType === 'cast' ? credits.cast : credits.crew;
+
+        const uniqueCredits = [];
+        const seenIds = new Set();
+        for (const c of rawCredits) {
+            if (!seenIds.has(c.id)) {
+                uniqueCredits.push(c);
+                seenIds.add(c.id);
+            }
+        }
+
+        const sortedCreditsRaw = uniqueCredits.filter(c => c.poster_path);
+        const enrichedCredits = await enrichResultsWithIMDb(sortedCreditsRaw, 'movie');
+
+        const sortedCredits = enrichedCredits.sort((a, b) => {
+            const aIsDoc = a.genre_ids && a.genre_ids.includes(99);
+            const bIsDoc = b.genre_ids && b.genre_ids.includes(99);
+            if (aIsDoc && !bIsDoc) return 1;
+            if (!aIsDoc && bIsDoc) return -1;
+            return (b.imdbRating || 0) - (a.imdbRating || 0);
+        });
+
+        contentRows.innerHTML = `
+            <div class="view-all-container">
+                <div class="view-all-header" style="padding: 40px 4% 20px; display:flex; gap:20px; align-items:center;">
+                    <button class="preview-back-btn" onclick="history.back()" style="position:static;">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h2 class="row-title" style="margin:0;">OTHER WORKS: ${personName} (${creditType.toUpperCase()})</h2>
+                </div>
+                <div class="results-grid">
+                    ${sortedCredits.map(item => makePosterWrap(item, 'movie')).join('')}
+                </div>
+            </div>
+        `;
+    } catch (err) {
+        contentRows.innerHTML = '<div class="loader">ERROR_LOADING_CREDITS</div>';
+        console.error(err);
+    }
+}
+
+window.viewFullCredits = (id, type, title) => {
+    window.navigateTo('view-full-credits', id, type, title);
+};
+
+async function renderFullCredits(id, type, title) {
+    const contentRows = document.getElementById('content-rows');
+    const heroSection = document.getElementById('hero');
+    heroSection.style.display = 'none';
+    contentRows.innerHTML = '<div class="loader">LOADING_CREDITS...</div>';
+    window.scrollTo(0, 0);
+
+    try {
+        const details = await tmdb.fetchFromTMDB(`/${type}/${id}`, { append_to_response: 'credits' });
+        const { cast, crew } = details.credits;
+
+        const makePersonCard = c => `
+            <div class="cast-card" style="width: auto; max-width: 150px; text-align: center; cursor: pointer;" onclick="window.openPerson(${c.id})">
+                <div class="cast-img-wrap" style="width: 100px; height: 100px; margin: 0 auto 10px; border-radius: 50%; overflow: hidden;">
+                    <img class="cast-img" style="width: 100%; height: 100%; object-fit: cover;" src="${c.profile_path ? TMDB_CONFIG.IMAGE_BASE_URL + '/w185' + c.profile_path : 'assets/img/no-profile.png'}" alt="${c.name}">
+                </div>
+                <div class="cast-name" style="font-size: 0.9rem; font-weight: bold; margin-bottom: 5px;">${c.name}</div>
+                <div class="cast-role" style="font-size:0.8rem; color:var(--text-secondary);">${c.character || c.job}</div>
+            </div>
+        `;
+
+        // Group crew by department
+        const crewByDept = crew.reduce((acc, curr) => {
+            if (!acc[curr.department]) acc[curr.department] = [];
+            acc[curr.department].push(curr);
+            return acc;
+        }, {});
+
+        let crewHtml = '';
+        for (const dept in crewByDept) {
+            crewHtml += `
+                <h3 class="row-title" style="margin-top:30px; font-size:1.2rem;">${dept.toUpperCase()}</h3>
+                <div class="cast-container" style="display:flex; flex-wrap:wrap; gap:20px;">
+                    ${crewByDept[dept].map(makePersonCard).join('')}
+                </div>
+            `;
+        }
+
+        contentRows.innerHTML = `
+            <div class="view-all-container">
+                <div class="view-all-header" style="padding: 40px 4% 20px; display:flex; gap:20px; align-items:center;">
+                    <button class="preview-back-btn" onclick="history.back()" style="position:static;">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h2 class="row-title" style="margin:0;">FULL CAST & CREW</h2>
+                </div>
+                
+                <div style="padding: 0 4%;">
+                    <h2 class="preview-title glitch" style="font-size: 2rem; margin-bottom: 20px;">${title}</h2>
+
+                    <div class="cast-section">
+                        <h3 class="row-title" style="margin-top:20px; font-size:1.5rem;">CAST <span style="font-size:1rem; margin-left:10px;">[${cast.length}]</span></h3>
+                        <div class="cast-container" style="display:flex; flex-wrap:wrap; gap:20px; margin-top:20px;">
+                            ${cast.map(makePersonCard).join('')}
+                        </div>
+                    </div>
+
+                    <div class="crew-section" style="margin-top: 50px; border-top: 1px solid var(--text-secondary); padding-top: 20px;">
+                        <h3 class="row-title" style="font-size:1.5rem;">CREW <span style="font-size:1rem; margin-left:10px;">[${crew.length}]</span></h3>
+                        ${crewHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (err) {
+        contentRows.innerHTML = '<div class="loader">ERROR_LOADING_CREDITS</div>';
+        console.error(err);
+    }
+}
+
+// ── Trailer Logic ────────────────────────────────────────────────────────────
+window.watchTrailer = async (type, id) => {
+    try {
+        const videos = await tmdb.fetchFromTMDB(`/${type}/${id}/videos`);
+        const trailer = videos.results.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+
+        if (trailer) {
+            const modal = document.getElementById('trailer-modal');
+            const container = document.getElementById('trailer-container');
+            container.innerHTML = `
+                <iframe width="100%" height="100%" 
+                        src="https://www.youtube.com/embed/${trailer.key}?autoplay=1" 
+                        frameborder="0" allow="autoplay; encrypted-media" allowfullscreen>
+                </iframe>`;
+            modal.style.display = 'flex';
+        } else {
+            alert('Trailer not found for this title.');
+        }
+    } catch (err) {
+        console.error('Trailer Error:', err);
+    }
+};
+
+window.closeTrailer = () => {
+    const modal = document.getElementById('trailer-modal');
+    const container = document.getElementById('trailer-container');
+    container.innerHTML = '';
+    modal.style.display = 'none';
 };
 
