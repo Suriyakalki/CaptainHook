@@ -3,6 +3,24 @@ import { TMDB_CONFIG, VIDKING_CONFIG } from './config.js?v=20.0';
 
 // ── My List (Watchlist) Helpers ──────────────────────────────────────────────
 const STORAGE_KEY = 'captain-hook-list';
+const HISTORY_KEY = 'captain-hook-history';
+
+function getHistory() {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+}
+
+function saveToHistory(item) {
+    let history = getHistory();
+    const index = history.findIndex(i => i.id === item.id);
+    if (index > -1) {
+        history.splice(index, 1);
+    }
+    history.unshift(item);
+    if (history.length > 20) {
+        history.pop();
+    }
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
 
 function getList() {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -205,6 +223,12 @@ async function renderView(view, ...args) {
             if (trending && trending.results.length > 0) renderHero(trending.results[0]);
 
             contentRows.innerHTML = '';
+
+            const history = getHistory();
+            if (history.length > 0) {
+                renderRow('CONTINUE_WATCHING', history, null);
+            }
+
             const categories = [
                 { title: 'Top_Rated_Movies', key: 'top-rated:movie', fetch: () => tmdb.getTopRated('movie') },
                 { title: 'Popular_TV_Shows', key: 'popular:tv', fetch: () => tmdb.getPopular('tv') },
@@ -281,6 +305,37 @@ async function renderView(view, ...args) {
                         <button class="row-arrow row-arrow-left" aria-label="Scroll left"><i class="fas fa-chevron-left"></i></button>
                         <div class="row-posters">
                             ${list.map(item => makePosterWrap(item, item.type)).join('')}
+                        </div>
+                        <button class="row-arrow row-arrow-right" aria-label="Scroll right"><i class="fas fa-chevron-right"></i></button>
+                    </div>`;
+                contentRows.appendChild(row);
+                setupRowArrows(row);
+            }
+        }
+        else if (view === 'history') {
+            heroSection.style.display = 'none';
+            const history = getHistory();
+            contentRows.innerHTML = '';
+            const header = document.createElement('div');
+            header.style.cssText = 'padding: 40px 4% 20px';
+            header.innerHTML = `<h2 class="row-title">WATCH_HISTORY <span style="font-size:1rem; margin-left:10px;">[${history.length}]</span></h2>`;
+            contentRows.appendChild(header);
+
+            if (history.length === 0) {
+                contentRows.innerHTML += `
+                    <div class="my-list-empty">
+                        <i class="fas fa-history" style="font-size:3rem; margin-bottom:16px;"></i>
+                        <p>No watch history found.</p>
+                        <p style="font-size:0.85rem; margin-top:8px;">Movies and TV shows you watch will appear here.</p>
+                    </div>`;
+            } else {
+                const row = document.createElement('div');
+                row.className = 'row';
+                row.innerHTML = `
+                    <div class="row-scroll-container">
+                        <button class="row-arrow row-arrow-left" aria-label="Scroll left"><i class="fas fa-chevron-left"></i></button>
+                        <div class="row-posters">
+                            ${history.map(item => makePosterWrap(item, item.type)).join('')}
                         </div>
                         <button class="row-arrow row-arrow-right" aria-label="Scroll right"><i class="fas fa-chevron-right"></i></button>
                     </div>`;
@@ -955,7 +1010,22 @@ window.loadEpisodes = async (tvId, seasonNumber) => {
     }
 };
 
-window.playStream = (type, id, season = 1, episode = 1) => {
+window.playStream = async (type, id, season = 1, episode = 1) => {
+    try {
+        const details = await tmdb.getDetails(type, id);
+        if (details) {
+            const item = {
+                type,
+                id,
+                title: details.title || details.name,
+                overview: details.overview,
+                poster_path: details.poster_path
+            };
+            saveToHistory(item);
+        }
+    } catch (err) {
+        console.error('Error saving to history:', err);
+    }
     window.navigateTo('player', type, id, season, episode);
 };
 
