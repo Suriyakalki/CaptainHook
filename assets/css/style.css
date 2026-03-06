@@ -2793,3 +2793,381 @@ body.hide-nav .top-bar {
         gap: 6px;
     }
 }
+
+/* ══════════════════════════════════════════════════════
+   REVAMPED PLAYER PAGE — v56
+   ══════════════════════════════════════════════════════ */
+
+/* Full-viewport player container */
+.page-player {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Iframe fills the entire container */
+.page-player #stream-iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* ── Loading Splash ── */
+.player-loader {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.6s ease;
+}
+
+.player-loader-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.player-loader-poster {
+    width: 100px;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+    opacity: 0.85;
+}
+
+.player-loader-text {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+}
+
+.player-loader-bar {
+    width: 140px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 99px;
+    overflow: hidden;
+}
+
+.player-loader-fill {
+    height: 100%;
+    background: var(--accent, #e50914);
+    border-radius: 99px;
+    animation: playerLoadAnim 2s ease-in-out infinite;
+}
+
+@keyframes playerLoadAnim {
+    0% {
+        width: 0%;
+        margin-left: 0;
+    }
+
+    50% {
+        width: 70%;
+        margin-left: 15%;
+    }
+
+    100% {
+        width: 0%;
+        margin-left: 100%;
+    }
+}
+
+/* ── Top Bar ── */
+.player-topbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, transparent 100%);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.player-topbar.ui-hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-10px);
+}
+
+.player-back-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.player-back-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.player-topbar-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+}
+
+.player-topbar-title {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.player-topbar-ep {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.55);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* ── Pause-state Info Overlay ── */
+.player-info-overlay {
+    position: absolute;
+    /* Bottom bar only — does NOT cover the full screen */
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    z-index: 15;
+    display: flex;
+    align-items: flex-end;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+}
+
+.player-info-overlay.info-visible {
+    opacity: 1;
+    pointer-events: none;
+    /* keep clicks going to iframe */
+}
+
+/* No full-screen blur backdrop — removed to keep player visible */
+.player-info-backdrop {
+    display: none;
+}
+
+.player-info-backdrop-fade {
+    position: absolute;
+    inset: 0;
+    /* Gradient from bottom only — doesn't obscure the video above */
+    background: linear-gradient(to top,
+            rgba(0, 0, 0, 0.92) 0%,
+            rgba(0, 0, 0, 0.6) 50%,
+            transparent 100%);
+}
+
+.player-info-content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    /* Push content up from the very bottom edge so it clears the iframe's own controls */
+    padding: 16px 5% 80px;
+    width: 100%;
+}
+
+.player-info-poster {
+    width: 110px;
+    flex-shrink: 0;
+    border-radius: 8px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+    transform: translateY(0);
+    transition: transform 0.6s ease;
+}
+
+.player-info-overlay.info-visible .player-info-poster {
+    transform: translateY(-4px);
+}
+
+.player-info-text {
+    flex: 1;
+    overflow: hidden;
+}
+
+.player-info-title {
+    font-size: clamp(1.2rem, 3vw, 2.2rem);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #fff;
+    margin: 0 0 8px;
+    line-height: 1.1;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+    /* Accent underline uses the vibrant colour */
+    border-bottom: 2px solid var(--accent, #e50914);
+    padding-bottom: 10px;
+    display: inline-block;
+}
+
+.player-info-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.player-info-meta span {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.55);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.player-info-meta span+span::before {
+    content: '·';
+    margin-right: 12px;
+    color: rgba(255, 255, 255, 0.25);
+}
+
+.player-info-overview {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.75);
+    line-height: 1.6;
+    max-width: 600px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin: 0;
+}
+
+/* Mobile adjustments for player info overlay */
+@media (max-width: 768px) {
+    .player-info-poster {
+        display: none;
+    }
+
+    .player-info-content {
+        padding: 20px 5%;
+    }
+
+    .player-info-title {
+        font-size: 1.1rem;
+    }
+
+    .player-info-overview {
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        font-size: 0.8rem;
+    }
+
+    .player-topbar {
+        padding: 12px 16px;
+    }
+}
+
+/* ══════════════════════════════════════════════════════
+   HERO ROTATION — v60
+   ══════════════════════════════════════════════════════ */
+
+/* Smooth cross-fade on the hero background swap */
+#hero {
+    transition: background-image 0s, opacity 0.6s ease;
+}
+
+/* Dot indicators */
+.hero-dots {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 20px;
+}
+
+.hero-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.35);
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: width 0.3s ease, background 0.3s ease;
+}
+
+.hero-dot.active {
+    width: 28px;
+    background: #fff;
+}
+
+.hero-dot:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.65);
+}
+
+/* Outline button variant (MORE INFO) */
+.btn-outline {
+    background: transparent;
+    border: 1.5px solid rgba(255, 255, 255, 0.55);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 10px 20px;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.btn-outline:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: #fff;
+}
+
+@media (max-width: 768px) {
+    .hero-dots {
+        margin-top: 14px;
+    }
+
+    .hero-dot {
+        width: 6px;
+        height: 6px;
+    }
+
+    .hero-dot.active {
+        width: 22px;
+    }
+}

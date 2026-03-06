@@ -297,6 +297,8 @@ async function renderView(view, ...args) {
     // Reset layout state
     document.body.classList.remove('hide-nav');
     contentRows.classList.remove('vibrant-themed');
+    // Stop any running hero rotation when navigating away
+    stopHeroRotation();
 
     console.log(`Rendering View: ${view}`, args);
 
@@ -323,7 +325,7 @@ async function renderView(view, ...args) {
             // Actual data fetch
             const trending = await tmdb.getTrending('movie');
             if (trending && trending.results && trending.results.length > 0) {
-                renderHero(trending.results[0]);
+                initHeroRotation(trending.results.slice(0, 5));
             } else if (!trending) {
                 throw new Error('CONNECTION_TIMEOUT');
             }
@@ -942,30 +944,71 @@ async function renderView(view, ...args) {
         else if (view === 'player') {
             const [type, id, season = 1, episode = 1] = args;
             heroSection.style.display = 'none';
-            const embedUrl = type === 'tv'
-                ? `${VIDKING_CONFIG.TV_URL}${id}/${season}/${episode}?clr=e50914`
-                : `${VIDKING_CONFIG.MOVIE_URL}${id}?clr=e50914`;
-
             document.body.classList.add('hide-nav');
             window.scrollTo(0, 0);
 
+            // Pull stored metadata (set by playStream before navigating)
+            const meta = window.__playerMeta || {};
+            const accentHex = meta.accentHex || 'e50914';
+            const title = meta.title || '';
+            const overview = meta.overview || '';
+            const poster = meta.poster || '';
+            const backdrop = meta.backdrop || '';
+            const year = meta.year || '';
+            const runtime = meta.runtime || '';
+            const genres = meta.genres || '';
+
+            const embedUrl = type === 'tv'
+                ? `${VIDKING_CONFIG.TV_URL}${id}/${season}/${episode}?clr=${accentHex}`
+                : `${VIDKING_CONFIG.MOVIE_URL}${id}?clr=${accentHex}`;
+
             contentRows.innerHTML = `
-                <div class="video-container page-player" id="player-container">
+                <div class="page-player" id="player-container">
+
+                    <!-- Loading splash -->
                     <div class="player-loader" id="player-loader">
-                        <div class="loader-inner">INITIALIZING_STREAM...</div>
-                    </div>
-                    
-                    <div class="player-ui-overlay" id="player-ui">
-                        <div class="player-header" id="player-header">
-                            <button class="preview-back-btn" onclick="history.back()">
-                                <i class="fas fa-arrow-left"></i> BACK
-                            </button>
+                        <div class="player-loader-inner">
+                            ${poster ? `<img class="player-loader-poster" src="${poster}" alt="${title}">` : ''}
+                            <div class="player-loader-text">INITIALIZING_STREAM...</div>
+                            <div class="player-loader-bar"><div class="player-loader-fill" style="--accent:#${accentHex}"></div></div>
                         </div>
                     </div>
 
+                    <!-- Top bar (always visible, fades out) -->
+                    <div class="player-topbar" id="player-topbar">
+                        <button class="player-back-btn" onclick="history.back()">
+                            <i class="fas fa-arrow-left"></i>
+                        </button>
+                        <div class="player-topbar-meta">
+                            <span class="player-topbar-title">${title}</span>
+                            ${type === 'tv' ? `<span class="player-topbar-ep">S${season} E${episode}</span>` : ''}
+                        </div>
+                    </div>
+
+                    <!-- Pause-state info overlay (shows on mouse idle) -->
+                    <div class="player-info-overlay" id="player-info-overlay">
+                        ${backdrop ? `<div class="player-info-backdrop" style="background-image:url('${backdrop}')"></div>` : ''}
+                        <div class="player-info-backdrop-fade"></div>
+                        <div class="player-info-content">
+                            ${poster ? `<img class="player-info-poster" src="${poster}" alt="${title}">` : ''}
+                            <div class="player-info-text">
+                                <h1 class="player-info-title" style="--accent:#${accentHex}">${title}</h1>
+                                <div class="player-info-meta">
+                                    ${year ? `<span>${year}</span>` : ''}
+                                    ${runtime ? `<span>${runtime}</span>` : ''}
+                                    ${genres ? `<span>${genres}</span>` : ''}
+                                    ${type === 'tv' ? `<span>S${season} · E${episode}</span>` : ''}
+                                </div>
+                                <p class="player-info-overview">${overview}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- The actual stream iframe -->
                     <iframe id="stream-iframe"
                             src="${embedUrl}"
                             allowfullscreen
+                            allow="autoplay; encrypted-media"
                             sandbox="allow-forms allow-scripts allow-same-origin allow-presentation">
                     </iframe>
                 </div>
@@ -973,27 +1016,43 @@ async function renderView(view, ...args) {
 
             const iframe = document.getElementById('stream-iframe');
             const loader = document.getElementById('player-loader');
-            const ui = document.getElementById('player-ui');
-            const headerEl = document.getElementById('player-header');
-            const containerEl = document.getElementById('player-container');
-            let hideTimeout;
+            const topbar = document.getElementById('player-topbar');
+            const infoOverlay = document.getElementById('player-info-overlay');
+            const container = document.getElementById('player-container');
 
-            iframe.onload = () => { if (loader) loader.style.display = 'none'; };
-            setTimeout(() => { if (loader) loader.style.display = 'none'; }, 8000);
+            // Hide loader once iframe loads (or after timeout)
+            iframe.onload = () => { loader && (loader.style.opacity = '0', setTimeout(() => loader.remove(), 600)); };
+            setTimeout(() => { try { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 600); } catch (_) { } }, 8000);
+
+            // UI visibility — topbar fades out after 3s idle, info overlay appears after 4s idle
+            let hideTimer, infoTimer, isMoving = false;
 
             const showUI = () => {
-                ui.classList.remove('ui-hidden');
-                clearTimeout(hideTimeout);
-                hideTimeout = setTimeout(() => { ui.classList.add('ui-hidden'); }, 3000);
+                clearTimeout(hideTimer);
+                clearTimeout(infoTimer);
+                topbar.classList.remove('ui-hidden');
+                infoOverlay.classList.remove('info-visible');
+                hideTimer = setTimeout(() => topbar.classList.add('ui-hidden'), 3000);
+                infoTimer = setTimeout(() => infoOverlay.classList.add('info-visible'), 4500);
             };
 
-            containerEl.addEventListener('mousemove', showUI);
-            headerEl.addEventListener('touchstart', (e) => {
-                e.stopPropagation();
-                showUI();
-            }, { passive: true });
+            // Hide overlay immediately when user clicks into iframe (play/pause)
+            // window.blur fires when the iframe steals focus
+            const onWindowBlur = () => {
+                clearTimeout(infoTimer);
+                infoOverlay.classList.remove('info-visible');
+                // Restart idle timer so it shows again if they go idle
+                infoTimer = setTimeout(() => infoOverlay.classList.add('info-visible'), 4500);
+            };
+            window.addEventListener('blur', onWindowBlur);
 
-            showUI();
+            container.addEventListener('mousemove', showUI);
+            container.addEventListener('touchstart', showUI, { passive: true });
+            container.addEventListener('click', showUI);
+
+            // Show overlay immediately on load
+            infoOverlay.classList.add('info-visible');
+            hideTimer = setTimeout(() => topbar.classList.add('ui-hidden'), 3000);
         }
     } catch (err) {
         console.error('View Rendering Error:', err);
@@ -1008,37 +1067,101 @@ async function renderView(view, ...args) {
     }
 }
 
-function renderHero(movie) {
+// Global hero rotation interval handle — cleared when navigating away
+let _heroRotationInterval = null;
+
+function stopHeroRotation() {
+    if (_heroRotationInterval) {
+        clearInterval(_heroRotationInterval);
+        _heroRotationInterval = null;
+    }
+}
+// Expose for inline onclick handlers in hero dots
+window.stopHeroRotation = stopHeroRotation;
+window.renderHero = renderHero;
+
+function initHeroRotation(movies) {
+    stopHeroRotation();
+    if (!movies || movies.length === 0) return;
+    let currentIndex = 0;
+
+    // Render first slide immediately
+    renderHero(movies[0], movies, 0);
+
+    if (movies.length <= 1) return;
+
+    _heroRotationInterval = setInterval(() => {
+        currentIndex = (currentIndex + 1) % movies.length;
+        const hero = document.getElementById('hero');
+        if (!hero) { stopHeroRotation(); return; }
+
+        // Fade out
+        hero.style.transition = 'opacity 0.5s ease';
+        hero.style.opacity = '0';
+
+        setTimeout(() => {
+            if (!document.getElementById('hero')) { stopHeroRotation(); return; }
+            renderHero(movies[currentIndex], movies, currentIndex);
+            const h = document.getElementById('hero');
+            if (h) {
+                h.style.transition = 'opacity 0.6s ease';
+                h.style.opacity = '1';
+            }
+        }, 500);
+    }, 7000);
+}
+
+function renderHero(movie, allMovies, activeIndex) {
     const hero = document.getElementById('hero');
+    if (!hero) return;
     hero.style.backgroundImage = `url(${TMDB_CONFIG.IMAGE_BASE_URL}/${TMDB_CONFIG.BACKDROP_SIZE}${movie.backdrop_path})`;
 
-    const added = isInList(movie.id);
+    const type = movie.title ? 'movie' : 'tv';
     const title = movie.title || movie.name;
+    const added = isInList(movie.id);
 
-    // Fetch IMDb rating for hero asynchronously
-    getImdbRating(movie.id, movie.title ? 'movie' : 'tv').then(rating => {
+    // Dot indicators
+    const dotsHtml = allMovies && allMovies.length > 1
+        ? `<div class="hero-dots">
+            ${allMovies.map((_, i) =>
+            `<button class="hero-dot ${i === activeIndex ? 'active' : ''}"
+                    onclick="event.stopPropagation(); stopHeroRotation(); renderHero(window.__heroMovies[${i}], window.__heroMovies, ${i});"></button>`
+        ).join('')}
+           </div>`
+        : '';
+
+    // Store movie list globally for dot onclick access
+    if (allMovies) window.__heroMovies = allMovies;
+
+    hero.innerHTML = `
+        <div class="hero-content distressed">
+            <h1 class="hero-title glitch" data-text="${title}">${title}</h1>
+            <div id="hero-imdb-rating" style="display:none; background:rgba(0,0,0,0.6); padding:5px 10px; border-radius:4px; margin-bottom:15px; font-weight:bold; color:#f5c518; border:1px solid #f5c518;"></div>
+            <p class="hero-overview">${(movie.overview || '').slice(0, 220)}${(movie.overview || '').length > 220 ? '…' : ''}</p>
+            <div class="hero-buttons">
+                <button class="btn btn-primary" onclick="window.playStream('${type}', ${movie.id})">
+                   <i class="fas fa-play"></i> PLAY
+                </button>
+                <button class="btn btn-secondary toggle-list-btn" data-id="${movie.id}"
+                    onclick="window.toggleFromListing('${type}', ${movie.id}, '${title.replace(/'/g, "\\'")}', '${movie.poster_path}', '${(movie.overview || '').slice(0, 160).replace(/'/g, "\\'").replace(/"/g, '')}')">
+                    ${added ? '<i class="fas fa-minus"></i> REMOVE' : '<i class="fas fa-plus"></i> MY LIST'}
+                </button>
+                <button class="btn btn-outline hero-info-btn" onclick="window.showPreview('${type}', ${movie.id})">
+                    <i class="fas fa-info-circle"></i> MORE INFO
+                </button>
+            </div>
+            ${dotsHtml}
+        </div>
+    `;
+
+    // Async IMDb rating
+    getImdbRating(movie.id, type).then(rating => {
         const ratingEl = document.getElementById('hero-imdb-rating');
         if (ratingEl && rating) {
             ratingEl.innerHTML = `⭐ ${rating}`;
             ratingEl.style.display = 'inline-block';
         }
     });
-
-    hero.innerHTML = `
-        <div class="hero-content distressed">
-            <h1 class="hero-title glitch" data-text="${title}">${title}</h1>
-            <div id="hero-imdb-rating" style="display:none; background:rgba(0,0,0,0.6); padding:5px 10px; border-radius:4px; margin-bottom:15px; font-weight:bold; color:#f5c518; border:1px solid #f5c518;"></div>
-            <p class="hero-overview">${movie.overview}</p>
-            <div class="hero-buttons">
-                <button class="btn btn-primary" onclick="window.playStream('${movie.title ? 'movie' : 'tv'}', ${movie.id})">
-                   <i class="fas fa-play"></i> PLAY
-                </button>
-                <button class="btn btn-secondary toggle-list-btn" data-id="${movie.id}" onclick="window.toggleFromListing('${movie.title ? 'movie' : 'tv'}', ${movie.id}, '${title.replace(/'/g, "\\'")}'.replace(/"/g,''), '${movie.poster_path}', '${(movie.overview || '').slice(0, 160).replace(/'/g, "\\'").replace(/"/g, '')}')">
-                    ${added ? '<i class="fas fa-minus"></i> REMOVE' : '<i class="fas fa-plus"></i> MY LIST'}
-                </button>
-            </div>
-        </div>
-    `;
 }
 
 function makePosterWrap(item, type) {
@@ -1337,18 +1460,48 @@ window.playStream = async (type, id, season = 1, episode = 1) => {
     try {
         const details = await tmdb.getDetails(type, id);
         if (details) {
-            const item = {
-                type,
-                id,
+            const posterPath = `${TMDB_CONFIG.IMAGE_BASE_URL}/w500${details.poster_path}`;
+            const backdropPath = `${TMDB_CONFIG.IMAGE_BASE_URL}/original${details.backdrop_path}`;
+            // Extract vibrant colour for player accent + store metadata globally
+            let accentHex = 'e50914';
+            try {
+                const vColor = await getVibrantColor(posterPath);
+                // getVibrantColor returns "rgb(r,g,b)" — parse and convert to hex
+                if (vColor && vColor.startsWith('rgb')) {
+                    const nums = vColor.match(/\d+/g);
+                    if (nums && nums.length >= 3) {
+                        accentHex = nums.slice(0, 3)
+                            .map(n => parseInt(n).toString(16).padStart(2, '0'))
+                            .join('');
+                    }
+                }
+            } catch (_) { }
+
+            window.__playerMeta = {
+                type, id, season, episode,
+                title: details.title || details.name,
+                overview: details.overview || '',
+                poster: posterPath,
+                backdrop: backdropPath,
+                year: (details.release_date || details.first_air_date || '').slice(0, 4),
+                runtime: details.runtime
+                    ? `${Math.floor(details.runtime / 60)}h ${details.runtime % 60}m`
+                    : (details.number_of_seasons ? `${details.number_of_seasons} Season${details.number_of_seasons > 1 ? 's' : ''}` : ''),
+                accentHex,
+                genres: (details.genres || []).map(g => g.name).join(' · '),
+            };
+
+            saveToHistory({
+                type, id,
                 title: details.title || details.name,
                 overview: details.overview,
                 poster_path: details.poster_path,
-                backdrop_path: details.backdrop_path
-            };
-            saveToHistory(item);
+                backdrop_path: details.backdrop_path,
+            });
         }
     } catch (err) {
         console.error('Error saving to history:', err);
+        window.__playerMeta = null;
     }
     window.navigateTo('player', type, id, season, episode);
 };
