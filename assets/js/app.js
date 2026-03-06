@@ -1,5 +1,5 @@
-import { tmdb } from './tmdbService.js?v=44.0';
-import { TMDB_CONFIG, VIDKING_CONFIG, OMDB_CONFIG } from './config.js?v=44.0';
+import { tmdb } from './tmdbService.js?v=56.0';
+import { TMDB_CONFIG, VIDKING_CONFIG, OMDB_CONFIG } from './config.js?v=56.0';
 
 // ── My List (Watchlist) Helpers ──────────────────────────────────────────────
 const STORAGE_KEY = 'captain-hook-list';
@@ -476,9 +476,6 @@ async function renderView(view, ...args) {
             heroSection.style.display = 'none';
             contentRows.innerHTML = `
                 <div style="padding: 40px 4% 20px">
-                    <button class="preview-back-btn" onclick="history.back()">
-                        <i class="fas fa-arrow-left"></i> BACK
-                    </button>
                     <h2 class="row-title">${catTitle || fetchKey}</h2>
                 </div>
                 <div id="view-all-grid" class="results-grid"></div>
@@ -503,9 +500,6 @@ async function renderView(view, ...args) {
             contentRows.innerHTML = `
                 <div class="view-all-container">
                     <div style="padding: 40px 4% 10px;">
-                        <button class="preview-back-btn" onclick="history.back()">
-                            <i class="fas fa-arrow-left"></i> BACK
-                        </button>
                         <h2 class="row-title">${catTitle || fetchKey}</h2>
                     </div>
                     <div id="view-all-grid" class="results-grid" style="padding-bottom: 20px;"></div>
@@ -579,9 +573,6 @@ async function renderView(view, ...args) {
             heroSection.style.display = 'none';
             contentRows.innerHTML = `
                 <div style="padding: 40px 4%">
-                    <button class="preview-back-btn" onclick="window.navigateTo('home')" style="position: static; margin-bottom: 20px;">
-                        <i class="fas fa-arrow-left"></i> BACK
-                    </button>
                     <h2 class="row-title">BROWSE BY GENRE</h2>
                     <div class="genre-container">
                         <div class="genre-section">
@@ -756,23 +747,41 @@ async function renderView(view, ...args) {
             const backdropPath = `${TMDB_CONFIG.IMAGE_BASE_URL}/${TMDB_CONFIG.BACKDROP_SIZE}${details.backdrop_path}`;
             const posterPath = `${TMDB_CONFIG.IMAGE_BASE_URL}/w500${details.poster_path}`;
 
+            // Extract YouTube trailer key
+            const trailerVideo = details.videos && details.videos.results
+                ? (details.videos.results.find(v => v.type === 'Trailer' && v.site === 'YouTube')
+                    || details.videos.results.find(v => v.site === 'YouTube'))
+                : null;
+            const trailerKey = trailerVideo ? trailerVideo.key : null;
+
             // Vibrant Color Extraction
             const vColor = await getVibrantColor(posterPath);
             updateVibrantTheme(vColor);
-
             contentRows.classList.add('vibrant-themed');
 
-            // OMDb Fetch
+            // OMDb Fetch for rating badge
             const imdbId = details.imdb_id || (details.external_ids && details.external_ids.imdb_id);
-            let omdbRatingHtml = '';
+            let imdbRating = '';
             if (imdbId) {
                 const omdbData = await tmdb.getOMDbDetails(imdbId);
                 if (omdbData && omdbData.imdbRating && omdbData.imdbRating !== 'N/A') {
-                    omdbRatingHtml = `<p><strong>IMDb RATING:</strong> 🟡 ${omdbData.imdbRating}</p>`;
+                    imdbRating = omdbData.imdbRating;
                 }
             }
 
-            const castHtml = details.credits.cast.slice(0, 10).map(c => `
+            // Meta badges: year · runtime/seasons · rating
+            const year = (details.release_date || details.first_air_date || '').slice(0, 4);
+            const runtime = details.runtime
+                ? `${Math.floor(details.runtime / 60)}h ${details.runtime % 60}m`
+                : (details.number_of_seasons ? `${details.number_of_seasons} Season${details.number_of_seasons > 1 ? 's' : ''}` : '');
+            const metaBadges = [
+                year ? `<span class="meta-badge">${year}</span>` : '',
+                runtime ? `<span class="meta-badge">${runtime}</span>` : '',
+                details.vote_average ? `<span class="meta-badge meta-badge-score">★ ${details.vote_average.toFixed(1)}</span>` : '',
+                imdbRating ? `<span class="meta-badge meta-badge-imdb">IMDb ${imdbRating}</span>` : '',
+            ].filter(Boolean).join('');
+
+            const castHtml = details.credits.cast.slice(0, 12).map(c => `
                 <div class="cast-card" onclick="window.openPerson(${c.id})">
                     <div class="cast-img-wrap">
                         <img class="cast-img" src="${c.profile_path ? TMDB_CONFIG.IMAGE_BASE_URL + '/w185' + c.profile_path : 'assets/img/no-profile.png'}" alt="${c.name}">
@@ -781,23 +790,16 @@ async function renderView(view, ...args) {
                 </div>
             `).join('');
 
-            // Extract main crew
-            const targetJobs = ['Director', 'Writer', 'Screenplay', 'Producer', 'Executive Producer'];
+            // Key crew only (director + writer), deduplicated
+            const targetJobs = ['Director', 'Writer', 'Screenplay'];
             const importantCrew = details.credits.crew
                 .filter(c => targetJobs.includes(c.job))
-                .reduce((acc, current) => {
-                    const x = acc.find(item => item.id === current.id);
-                    if (!x) {
-                        return acc.concat([current]);
-                    } else {
-                        // Concatenate jobs if same person has multiple
-                        if (!x.job.includes(current.job)) {
-                            x.job += ', ' + current.job;
-                        }
-                        return acc;
-                    }
-                }, [])
-                .slice(0, 10);
+                .reduce((acc, cur) => {
+                    const x = acc.find(i => i.id === cur.id);
+                    if (!x) return acc.concat([cur]);
+                    if (!x.job.includes(cur.job)) x.job += ', ' + cur.job;
+                    return acc;
+                }, []).slice(0, 6);
 
             const crewHtml = importantCrew.map(c => `
                 <div class="cast-card" onclick="window.openPerson(${c.id})">
@@ -805,88 +807,126 @@ async function renderView(view, ...args) {
                         <img class="cast-img" src="${c.profile_path ? TMDB_CONFIG.IMAGE_BASE_URL + '/w185' + c.profile_path : 'assets/img/no-profile.png'}" alt="${c.name}">
                     </div>
                     <div class="cast-name">${c.name}</div>
-                    <div class="cast-role" style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">${c.job}</div>
+                    <div class="cast-role" style="font-size:0.65rem; color:var(--text-secondary); margin-top:2px; text-transform:uppercase;">${c.job}</div>
                 </div>
             `).join('');
 
             const seasonSelector = isTv ? `
-                <div class="season-browser" style="margin-top:30px;">
-                    <div class="season-header" style="display:flex; flex-wrap:wrap; align-items:center; gap:20px; justify-content:flex-start;">
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <label class="season-label">SEASON</label>
-                            <select class="season-select" id="season-select-${id}" onchange="window.loadEpisodes(${id}, this.value)">
-                                ${seasons.map(s => `<option value="${s.season_number}">Season ${s.season_number}</option>`).join('')}
-                            </select>
-                        </div>
+                <div class="season-browser" style="margin-top:24px;">
+                    <div class="season-header">
+                        <label class="season-label">SEASON</label>
+                        <select class="season-select" id="season-select-${id}" onchange="window.loadEpisodes(${id}, this.value)">
+                            ${seasons.map(s => `<option value="${s.season_number}">Season ${s.season_number}</option>`).join('')}
+                        </select>
                     </div>
                     <div class="episode-list" id="episode-list-${id}"></div>
                 </div>` : '';
 
+            // Banner: YouTube trailer (autoplay, muted) or fallback to backdrop image
+            const bannerHtml = trailerKey
+                ? `<iframe class="details-trailer-iframe" id="trailer-iframe"
+                       src="https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&loop=1&playlist=${trailerKey}&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&start=5&enablejsapi=1"
+                       frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                   <div class="details-trailer-fade"></div>
+                   <img class="preview-backdrop-img details-backdrop-fallback" src="${backdropPath}" alt="Backdrop">
+                   <button class="trailer-mute-btn" id="trailer-mute-btn" title="Toggle mute">
+                       <i class="fas fa-volume-mute"></i>
+                   </button>`
+                : `<img class="preview-backdrop-img" src="${backdropPath}" alt="Backdrop">`;
+
             contentRows.innerHTML = `
                 <div class="preview-card details-page">
+                    <div class="preview-backdrop-wrap ${trailerKey ? 'has-trailer' : ''}">
+                        ${bannerHtml}
+                    </div>
+
                     <div class="details-grid">
                         <div class="details-poster-area">
-                            <img src="${posterPath}" alt="${details.title || details.name}" style="width:100%;">
-                            <div class="meta-sidebar" style="margin-top:20px; font-family:var(--font-mono); font-size:0.8rem; color:var(--text-secondary);">
-                                <p><strong>STATUS:</strong> ${details.status}</p>
-                                ${omdbRatingHtml}
-                                <p><strong>RELEASE:</strong> ${details.release_date || details.first_air_date}</p>
-                            </div>
+                            <img src="${posterPath}" alt="${details.title || details.name}" class="details-main-poster">
                         </div>
+
                         <div class="details-info-area">
-                            <button class="preview-back-btn" onclick="history.back()">
-                                <i class="fas fa-arrow-left"></i> BACK
-                            </button>
-                            <h1 class="preview-title glitch">${details.title || details.name}</h1>
-                            <div class="genres-row" style="display:flex; gap:10px; flex-wrap:wrap;">
-                                ${details.genres.map(g => `<span class="genre-tag" style="background:var(--vibrant-accent); padding:4px 10px; border-radius:4px; font-size:0.7rem; font-weight:700;">${g.name.toUpperCase()}</span>`).join('')}
+                            <h1 class="preview-title">${details.title || details.name}</h1>
+
+                            <div class="details-meta-row">${metaBadges}</div>
+
+                            <div class="genres-row">
+                                ${details.genres.map(g => `<span class="genre-tag">${g.name.toUpperCase()}</span>`).join(' ')}
                             </div>
-                            <p class="preview-overview" style="font-size:1.1rem; line-height:1.6; max-width:800px;">${details.overview}</p>
-                            
-                            <div class="preview-actions" style="position:static; padding:0; gap:20px;">
-                                <button class="preview-play-btn" onclick="window.playStream('${type}', ${id})">
-                                    <i class="fas fa-play"></i> PLAY NOW
+
+                            <div class="preview-actions">
+                                <button class="details-btn details-btn-play" onclick="window.playStream('${type}', ${id})">
+                                    <i class="fas fa-play"></i> PLAY
                                 </button>
-                                <button class="btn btn-secondary" onclick="window.watchTrailer('${type}', ${id})" style="padding:15px 30px; border:var(--border-thick);">
-                                    <i class="fas fa-film"></i> TRAILER
-                                </button>
-                                <button class="preview-list-btn toggle-list-btn" data-id="${id}" onclick="window.toggleFromListing('${type}', ${id}, '${(details.title || details.name).replace(/'/g, "\\'")}', '${details.poster_path}', '${(details.overview || '').slice(0, 160).replace(/'/g, "\\'").replace(/"/g, '')}')">
-                                    ${isInList(id) ? '<i class="fas fa-minus"></i> REMOVE' : '<i class="fas fa-plus"></i> MY LIST'}
+                                <button class="details-btn details-btn-list toggle-list-btn" data-id="${id}"
+                                    onclick="window.toggleFromListing('${type}', ${id}, '${(details.title || details.name).replace(/'/g, "\\'")}', '${details.poster_path}', '${(details.overview || '').slice(0, 160).replace(/'/g, "\\'").replace(/"/g, '')}')">
+                                    ${isInList(id) ? '<i class="fas fa-check"></i>' : '<i class="fas fa-plus"></i>'}
+                                    <span>${isInList(id) ? 'SAVED' : 'MY LIST'}</span>
                                 </button>
                             </div>
 
+                            <p class="preview-overview">${details.overview}</p>
+
                             <div class="cast-section">
-                                <h3 class="row-title" style="margin-top:20px; font-size:1.2rem;">THE CAST</h3>
+                                <h3 class="details-section-label">THE CAST</h3>
                                 <div class="cast-container">${castHtml}</div>
                             </div>
 
                             ${crewHtml ? `
-                            <div class="cast-section" style="margin-top:10px;">
-                                <h3 class="row-title" style="font-size:1.2rem;">THE CREW</h3>
+                            <div class="cast-section" style="margin-top:16px;">
+                                <h3 class="details-section-label">CREW</h3>
                                 <div class="cast-container">${crewHtml}</div>
                             </div>` : ''}
-                            
-                            <div style="margin-top: 20px;">
-                                <button class="btn btn-secondary" onclick="window.viewFullCredits(${id}, '${type}', '${(details.title || details.name).replace(/'/g, "\\'")}')" style="padding:10px 20px; border-radius:var(--border-radius); font-size:0.9rem;">
-                                    VIEW FULL CAST & CREW <i class="fas fa-arrow-right"></i>
+
+                            <div style="margin-top:16px;">
+                                <button class="details-btn details-btn-outline" onclick="window.viewFullCredits(${id}, '${type}', '${(details.title || details.name).replace(/'/g, "\\'")}')">
+                                    FULL CREDITS <i class="fas fa-arrow-right"></i>
                                 </button>
                             </div>
-                            
+
                             ${seasonSelector}
                         </div>
                     </div>
 
                     ${similar && similar.results && similar.results.length > 0 ? `
                         <div class="similar-content-section">
-                            <h2 class="row-title" style="margin: 40px 4% 10px;">MORE_LIKE_THIS</h2>
+                            <h2 class="details-section-label" style="margin: 32px 4% 10px;">MORE LIKE THIS</h2>
                             <div class="row">
-                                <div class="row-posters">
-                                    ${similar.results.slice(0, 12).map(item => makePosterWrap(item, type)).join('')}
+                                <div class="row-scroll-container">
+                                    <button class="row-arrow row-arrow-left"><i class="fas fa-chevron-left"></i></button>
+                                    <div class="row-posters">
+                                        ${similar.results.slice(0, 12).map(item => makePosterWrap(item, type)).join('')}
+                                    </div>
+                                    <button class="row-arrow row-arrow-right"><i class="fas fa-chevron-right"></i></button>
                                 </div>
                             </div>
                         </div>
                     ` : ''}
                 </div>`;
+
+            // Setup similar row arrows
+            const simRow = contentRows.querySelector('.similar-content-section .row');
+            if (simRow) setupRowArrows(simRow);
+
+            // Wire up trailer mute toggle via YouTube postMessage API
+            const muteBtn = contentRows.querySelector('#trailer-mute-btn');
+            if (muteBtn) {
+                let isMuted = true;
+                muteBtn.addEventListener('click', () => {
+                    const iframe = contentRows.querySelector('#trailer-iframe');
+                    if (!iframe) return;
+                    isMuted = !isMuted;
+                    const cmd = isMuted ? 'mute' : 'unMute';
+                    iframe.contentWindow.postMessage(
+                        JSON.stringify({ event: 'command', func: cmd, args: '' }),
+                        '*'
+                    );
+                    muteBtn.innerHTML = isMuted
+                        ? '<i class="fas fa-volume-mute"></i>'
+                        : '<i class="fas fa-volume-up"></i>';
+                    muteBtn.classList.toggle('is-unmuted', !isMuted);
+                });
+            }
 
             if (isTv && seasons.length > 0) window.loadEpisodes(id, seasons[0].season_number);
         }
@@ -1008,19 +1048,13 @@ function makePosterWrap(item, type) {
     const overview = (raw.slice(0, 160) + (raw.length > 160 ? '...' : '')).replace(/"/g, '&quot;');
     const poster = `${TMDB_CONFIG.IMAGE_BASE_URL}/${TMDB_CONFIG.POSTER_SIZE}${item.poster_path}`;
 
-    // Check if we have the rating in cache, otherwise show nothing or a placeholder
-    const rating = RATING_CACHE[item.id];
-    const ratingBadge = rating ? `
-        <div class="poster-rating-badge" style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.85); color:#f5c518; padding:3px 6px; border-radius:4px; font-size:0.75rem; font-weight:800; border:1px solid #f5c518; z-index:2; pointer-events:none;">
-            ${rating}
-        </div>` : '';
+
 
     return `<div class="poster-wrap"
                  style="position:relative;"
                  data-id="${item.id}" data-type="${type}"
                  data-title="${name}" data-overview="${overview}" data-poster="${poster}"
                  onclick="window.showPreview('${type}',${item.id})">
-                ${ratingBadge}
                 <img class="poster" src="${poster}" alt="${name}">
             </div>`;
 }
@@ -1048,8 +1082,10 @@ function makeLandscapePosterWrap(item) {
 
 function renderContinueWatchingRow(title, history) {
     const container = document.getElementById('content-rows');
-    // Filter out items that have no images at all
-    const validItems = history.filter(item => item.backdrop_path || item.poster_path);
+    // Deduplicate by id, then filter out items with no images
+    const seen = new Map();
+    history.forEach(item => { if (!seen.has(String(item.id))) seen.set(String(item.id), item); });
+    const validItems = [...seen.values()].filter(item => item.backdrop_path || item.poster_path);
     if (validItems.length === 0) return;
 
     const row = document.createElement('div');
@@ -1427,23 +1463,22 @@ async function renderPersonView(personId) {
 
         contentRows.innerHTML = `
             <div class="preview-card details-page">
+                <div class="preview-backdrop-wrap">
+                     <img class="preview-backdrop-img" src="${profile}" alt="${details.name}" style="filter: grayscale(1) opacity(0.3); object-position: top;">
+                </div>
                 <div class="details-grid">
                     <div class="details-poster-area">
-                        <img src="${profile}" alt="${details.name}" style="width:100%;">
-                        <button class="preview-back-btn" onclick="history.back()">
-                            <i class="fas fa-arrow-left"></i> BACK
-                        </button>
+                        <img src="${profile}" alt="${details.name}" class="details-main-poster">
+                        <div class="meta-sidebar">
+                            <p><strong>BORN:</strong> ${details.birthday || 'N/A'}</p>
+                            <p><strong>PLACE:</strong> ${details.place_of_birth || 'N/A'}</p>
+                        </div>
                     </div>
                     <div class="details-info-area">
-                        <h1 class="preview-title glitch" style="font-size:3rem;">${details.name}</h1>
-                        <div class="preview-meta">
-                            <span>BORN: ${details.birthday || 'N/A'}</span>
-                            <span>PLACE: ${details.place_of_birth || 'N/A'}</span>
-                        </div>
-                        <p class="preview-overview" style="font-size:1rem; line-height:1.6;">${details.biography || 'No biography available.'}</p>
+                        <h1 class="preview-title glitch">${details.name}</h1>
+                        <p class="preview-overview">${details.biography || 'No biography available.'}</p>
                     </div>
                 </div>
-                <div class="similar-content-section" style="padding-top:0;">
                     <div class="row-header" style="margin: 0 4% 0;">
                         <h2 class="row-title">KNOWN FOR</h2>
                     </div>

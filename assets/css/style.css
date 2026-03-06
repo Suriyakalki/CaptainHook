@@ -95,6 +95,12 @@
     box-sizing: border-box;
 }
 
+html,
+body {
+    overflow-x: hidden;
+    width: 100%;
+}
+
 /* Noise & Grain Overlay */
 .noise-overlay {
     position: fixed;
@@ -1000,7 +1006,7 @@ body.hide-nav .top-bar {
 /* ── Landscape Posters (Continue Watching) ── */
 .landscape-poster-wrap {
     position: relative;
-    width: 300px;
+    width: 200px;
     flex-shrink: 0;
     cursor: pointer;
     transition: transform 0.2s ease;
@@ -1909,12 +1915,12 @@ body.hide-nav .top-bar {
 }
 
 .preview-actions {
-    position: absolute;
-    bottom: 16px;
-    right: 16px;
     display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
     gap: 12px;
-    z-index: 10;
+    align-items: center;
+    margin: 16px 0;
 }
 
 .preview-play-btn,
@@ -1953,28 +1959,27 @@ body.hide-nav .top-bar {
     box-shadow: 2px 2px 0px var(--black);
 }
 
-.my-list-empty {
-    padding: 60px 4%;
-    text-align: center;
-    font-family: var(--font-mono);
-    color: var(--text-secondary);
-    border: var(--border-thin);
-    margin: 0 4%;
-    background: rgba(0, 0, 0, 0.05);
-}
-
 @media (max-width: 768px) {
     .preview-actions {
-        bottom: 12px;
-        right: 12px;
+        flex-direction: column !important;
+        width: 100% !important;
+        gap: 10px !important;
+        align-items: stretch !important;
+        margin: 16px 0 !important;
     }
 
     .preview-play-btn,
-    .preview-list-btn {
-        padding: 8px 12px;
-        font-size: 0.75rem;
+    .preview-list-btn,
+    .preview-actions .btn,
+    .preview-actions button {
+        width: 100% !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
+        font-size: 0.85rem !important;
+        padding: 12px 16px !important;
     }
 }
+
 
 /* Page Player Styles */
 .page-player {
@@ -2225,17 +2230,16 @@ body.hide-nav .top-bar {
 
     /* Optimize the View All grid for smaller screens (guarantee tight center-packing) */
     .results-grid {
-        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-        gap: 20px 10px;
-        padding: 0 4%;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px 10px;
+        padding: 0 3%;
         width: 100%;
-        margin: 0 auto;
     }
 
     .results-grid .poster-wrap {
         width: 100%;
-        max-width: 200px;
-        margin: 0 auto;
+        max-width: none;
+        margin: 0;
     }
 
     /* Hide the scroll arrows on mobile */
@@ -2321,5 +2325,471 @@ body.hide-nav .top-bar {
 
     .person-tab {
         font-size: 0.8rem;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   MOBILE DETAILS PAGE FIX — appended, no prior conflicts
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Details Page Structure (Desktop) ── */
+
+/* Backdrop image container */
+.preview-backdrop-wrap {
+    position: relative;
+    width: 100%;
+    height: 360px;
+    overflow: hidden;
+}
+
+.preview-backdrop-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Desktop: side-by-side poster + info */
+.details-grid {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 40px;
+    padding: 0 4% 40px;
+    margin-top: -120px;
+    position: relative;
+    z-index: 2;
+}
+
+.details-main-poster {
+    width: 100%;
+    border-radius: var(--border-radius);
+    border: var(--border-thick);
+    box-shadow: 12px 12px 0 var(--vibrant-accent);
+}
+
+.details-info-area {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.genres-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    align-items: center;
+}
+
+/* Genre tag pill */
+.genre-tag {
+    display: inline-block;
+    background: var(--surface-color);
+    border: var(--border-thin);
+    padding: 3px 10px;
+    border-radius: var(--border-radius);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+/* Mobile: clean left-aligned single column — NO center-align (breaks cast scroll) */
+@media (max-width: 768px) {
+
+    .preview-backdrop-wrap {
+        height: 220px;
+    }
+
+    /* Left-aligned column — do NOT use align-items:center here, it breaks cast scroll */
+    .details-grid {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        text-align: left !important;
+        margin-top: -50px !important;
+        padding: 0 16px 40px !important;
+        gap: 16px !important;
+    }
+
+    .details-poster-area {
+        width: 120px !important;
+        align-self: center !important;
+    }
+
+    .details-main-poster {
+        box-shadow: 6px 6px 0 var(--black) !important;
+    }
+
+    .details-info-area {
+        width: 100% !important;
+        align-items: flex-start !important;
+    }
+
+    .preview-title {
+        font-size: 1.5rem !important;
+        text-align: left !important;
+        line-height: 1.1 !important;
+    }
+
+    .genres-row {
+        justify-content: flex-start !important;
+    }
+
+    /* Hero buttons: stack vertically */
+    .hero-actions {
+        flex-direction: column !important;
+        width: 100% !important;
+        gap: 10px !important;
+    }
+
+    .hero-actions .btn {
+        width: 100% !important;
+        text-align: center !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Details action buttons: stack vertically, full width */
+    .preview-actions {
+        flex-direction: column !important;
+        width: 100% !important;
+        gap: 12px !important;
+        align-items: stretch !important;
+    }
+
+    .preview-play-btn,
+    .preview-list-btn,
+    .preview-actions .btn,
+    .preview-actions button {
+        width: 100% !important;
+        display: flex !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
+        font-size: 0.9rem !important;
+        padding: 12px 16px !important;
+    }
+
+    /* Compact cast & crew cards — scrollable row, not broken by centering */
+    .cast-section {
+        width: 100% !important;
+    }
+
+    .cast-container {
+        display: flex !important;
+        flex-direction: row !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        gap: 12px !important;
+        padding: 10px 0 !important;
+        max-width: 100% !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: none !important;
+    }
+
+    .cast-card {
+        flex-shrink: 0 !important;
+        width: 72px !important;
+        text-align: center !important;
+        transform: none !important;
+    }
+
+    .cast-img-wrap {
+        width: 58px !important;
+        height: 58px !important;
+        margin: 0 auto 5px !important;
+    }
+
+    .cast-name {
+        font-size: 0.62rem !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+        line-height: 1.2 !important;
+    }
+
+    /* Row headers: keep title left, VIEW ALL on same line or below */
+    .row-header {
+        flex-direction: row !important;
+        align-items: center !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+        padding-right: 0 !important;
+    }
+
+    .view-all-btn {
+        position: static !important;
+        transform: none !important;
+    }
+
+    /* Prevent any element from causing horizontal scroll */
+    .preview-card,
+    .details-page,
+    .details-grid,
+    .details-info-area,
+    .similar-content-section,
+    #content-rows,
+    main {
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
+    }
+
+    /* Cast scroll rows should scroll internally, not leak */
+    .cast-container {
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+    }
+
+    /* Make sure images don't overflow */
+    img {
+        max-width: 100% !important;
+    }
+}
+
+/* ══════════════════════════════════════════════════════
+   REVAMPED DETAILS PAGE — v55
+   ══════════════════════════════════════════════════════ */
+
+/* ── Trailer Banner ── */
+.preview-backdrop-wrap.has-trailer {
+    position: relative;
+    width: 100%;
+    height: 420px;
+    overflow: hidden;
+    background: #000;
+}
+
+.details-trailer-iframe {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* 16:9 scaled to fill the banner — oversized intentionally */
+    width: 177.78%;
+    height: 177.78%;
+    transform: translate(-50%, -50%);
+    border: none;
+    pointer-events: none;
+}
+
+/* Floating mute/unmute button over the trailer banner */
+.trailer-mute-btn {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(6px);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 99px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+    pointer-events: all;
+}
+
+.trailer-mute-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.6);
+}
+
+.trailer-mute-btn:active {
+    transform: scale(0.92);
+}
+
+.trailer-mute-btn.is-unmuted {
+    border-color: #fff;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Gradient fade — bottom darkens into the page */
+.details-trailer-fade {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom,
+            rgba(0, 0, 0, 0.05) 0%,
+            rgba(0, 0, 0, 0.15) 50%,
+            rgba(0, 0, 0, 0.85) 88%,
+            var(--bg-color) 100%);
+    z-index: 2;
+    pointer-events: none;
+}
+
+/* Fallback image — hidden when trailer iframe is present */
+.details-backdrop-fallback {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 0;
+    opacity: 0;
+}
+
+/* ── Meta badges (year · runtime · score · IMDb) ── */
+.details-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.meta-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 99px;
+    background: var(--surface-color);
+    border: var(--border-thin);
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+}
+
+.meta-badge-score {
+    background: var(--red);
+    color: #fff;
+    border-color: var(--red);
+}
+
+.meta-badge-imdb {
+    background: #f5c518;
+    color: #000;
+    border-color: #f5c518;
+}
+
+/* ── Section label (THE CAST / CREW / MORE LIKE THIS) ── */
+.details-section-label {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-secondary);
+    padding: 0;
+    margin-top: 20px;
+    margin-bottom: 4px;
+    border: none;
+    background: transparent;
+}
+
+/* ── Compact action buttons ── */
+.preview-actions {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin: 14px 0;
+}
+
+.details-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    padding: 9px 20px;
+    border-radius: 99px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.1s, box-shadow 0.1s, background 0.2s, color 0.2s;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.details-btn:active {
+    transform: translate(1px, 1px);
+}
+
+.details-btn-play {
+    background: var(--red);
+    color: #fff;
+    border-color: var(--red);
+    box-shadow: 3px 3px 0 var(--black);
+}
+
+.details-btn-play:hover {
+    background: #fff;
+    color: var(--red);
+    box-shadow: 4px 4px 0 var(--red);
+    transform: translate(-1px, -1px);
+}
+
+.details-btn-trailer {
+    background: transparent;
+    color: var(--text-primary);
+    border-color: var(--text-primary);
+    box-shadow: none;
+}
+
+.details-btn-trailer:hover {
+    background: var(--text-primary);
+    color: var(--bg-color);
+}
+
+.details-btn-list {
+    background: transparent;
+    color: var(--blue);
+    border-color: var(--blue);
+    box-shadow: none;
+}
+
+.details-btn-list:hover {
+    background: var(--blue);
+    color: #fff;
+}
+
+.details-btn-outline {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: rgba(128, 128, 128, 0.4);
+    font-size: 0.75rem;
+    padding: 7px 16px;
+}
+
+.details-btn-outline:hover {
+    border-color: var(--text-primary);
+    color: var(--text-primary);
+}
+
+/* Mobile overrides for new buttons */
+@media (max-width: 768px) {
+    .preview-backdrop-wrap.has-trailer {
+        height: 240px;
+    }
+
+    .preview-actions {
+        flex-direction: row !important;
+        align-items: center !important;
+        flex-wrap: wrap !important;
+        gap: 10px !important;
+        width: 100% !important;
+    }
+
+    .details-btn,
+    .preview-actions button {
+        justify-content: center !important;
+        flex: 1 !important;
+        min-width: 0 !important;
+        border-radius: var(--border-radius) !important;
+        font-size: 0.88rem !important;
+        padding: 12px 20px !important;
+    }
+
+    .details-meta-row {
+        gap: 6px;
     }
 }

@@ -1,4 +1,4 @@
-import { TMDB_CONFIG, OMDB_CONFIG } from './config.js?v=44.0';
+import { TMDB_CONFIG, OMDB_CONFIG } from './config.js?v=56.0';
 
 class TMDBService {
     async fetchWithTimeout(resource, options = {}) {

@@ -1,11 +1,11 @@
-const CACHE_NAME = 'captain-hook-v44';
+const CACHE_NAME = 'captain-hook-v54';
 const assets = [
     './',
     './index.html',
-    './assets/css/style.css?v=44.0',
-    './assets/js/app.js?v=44.0',
-    './assets/js/tmdbService.js?v=44.0',
-    './assets/js/config.js?v=44.0'
+    './assets/css/style.css?v=54.0',
+    './assets/js/app.js?v=54.0',
+    './assets/js/tmdbService.js?v=54.0',
+    './assets/js/config.js?v=54.0'
 ];
 
 self.addEventListener('install', e => {
