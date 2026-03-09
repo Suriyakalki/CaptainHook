@@ -1008,8 +1008,8 @@ async function renderView(view, ...args) {
                     <iframe id="stream-iframe"
                             src="${embedUrl}"
                             allowfullscreen
-                            allow="autoplay; encrypted-media"
-                            sandbox="allow-forms allow-scripts allow-same-origin allow-presentation">
+                            allow="autoplay; encrypted-media; fullscreen; picture-in-picture; gyroscope; accelerometer"
+                            sandbox="allow-forms allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox allow-pointer-lock allow-top-navigation-by-user-activation">
                     </iframe>
                 </div>
             `;
@@ -1019,6 +1019,11 @@ async function renderView(view, ...args) {
             const topbar = document.getElementById('player-topbar');
             const infoOverlay = document.getElementById('player-info-overlay');
             const container = document.getElementById('player-container');
+
+            // Unlock screen orientation so landscape works in PWA mode
+            if (screen.orientation && screen.orientation.unlock) {
+                try { screen.orientation.unlock(); } catch (_) { }
+            }
 
             // Hide loader once iframe loads (or after timeout)
             iframe.onload = () => { loader && (loader.style.opacity = '0', setTimeout(() => loader.remove(), 600)); };
